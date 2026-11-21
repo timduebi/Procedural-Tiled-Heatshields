@@ -60,6 +60,7 @@ namespace AblatorDecals
         public bool FillHull;             // close gaps on continuous whole-part hulls and cockpit masks
         public bool Skin;                 // overlay (gear, intakes, fins, flaps, shielded port base): no tiles but one closed shell, the visible skin lifted by
                                           // the thickness, the tile pattern projected onto it (joints only in the texture; see RunSkin)
+        public float CeramicSideDeg;      // > 0 (cockpit covers): smooth untiled black ceramic shell on the nose tip and both sides/chines (|dot(n, decalN)| <= sin(deg))
     }
 
     // A kept region of a cockpit cover (DESIGN-v11 G2/G3): closed loops drawn on a chart plane and reaching through the part along
@@ -334,9 +335,9 @@ namespace AblatorDecals
             Strips();
             Twins();
             AddCap(shell);
-            // Cockpit masks (HasClip) use real 3D tiles clipped cleanly to the mask in Drop/RegionHalves plus a recessed
-            // dark joint bed (AddMaskJointBed in Emit), instead of 90%-height flat Fill() blotches that fight with 3D tiles.
-            if (!HasClip && S.FillHull && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0)) Fill();
+            // Only small overlay tips (e.g. shielded docking port hood) use Fill(). Mk2 hulls use AddTankJointBed in Emit (< 2 ms)
+            // instead of 1-2 s Fill() passes; cockpit masks use exact Drop/RegionHalves + AddMaskJointBed / EmitCeramicShell.
+            if (S.Overlay && S.FillHull && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0)) Fill();
             Emit(result, outlines);
             result.HitTileLimit = hitLimit;
             result.Colliders = Colliders();
@@ -2105,6 +2106,24 @@ namespace AblatorDecals
             List<SurfaceIndex.ShellTri> shell = surface.CurvedShell(2 * s, Mathf.PI / 2.25f, s, Mathf.Cos(45 * Mathf.Deg2Rad), (a, b, c) =>
                 ClipDist(a) <= 0 && ClipDist(b) <= 0 && ClipDist(c) <= 0 && Vector3.Dot(Vector3.Cross(b - a, c - a).normalized, decalN) >= cosWrap &&
                 Vector3.Cross(b - a, c - a).magnitude <= 4 * s * s);
+            if (S.CeramicSideDeg > 0)
+            {
+                // Smooth untiled ceramic on nose tip + both sides/chines (|dot(faceN, decalN)| <= sin(CeramicSideDeg));
+                // belly and upper nose ahead of the windows remain real 3D tiles. Emitted mask-clipped in EmitCeramicShell.
+                float sideSin = Mathf.Sin(S.CeramicSideDeg * Mathf.Deg2Rad);
+                shellTris = new HashSet<int>();
+                foreach (SurfaceIndex.ShellTri st in shell) shellTris.Add(st.Index);
+                Vector3 axis = S.TankAxis.sqrMagnitude > 0.5f ? S.TankAxis.normalized : Vector3.zero;
+                for (int k = 0; k < surface.TriangleSlots; k++)
+                {
+                    if (!wrapIn[k] || !surface.Triangle(k, out Vector3 a, out Vector3 b, out Vector3 c, out Vector3 fn, out int o) || Obstacle(o)) continue;
+                    if (axis.sqrMagnitude > 0.5f && Vector3.Dot(fn, axis) < -0.999f) continue;
+                    if (Math.Abs(Vector3.Dot(fn, decalN)) > sideSin) continue;
+                    if (surface.Raycast((a + b + c) / 3 + fn * 0.01f, fn, 0.5f, -1.01f, out SurfaceHit inner, false) && !Obstacle(inner.Owner)) continue;
+                    shellTris.Add(k);
+                }
+                return null;
+            }
             if (shell.Count == 0) return null;
             shellTris = new HashSet<int>();
             foreach (SurfaceIndex.ShellTri st in shell) shellTris.Add(st.Index);
@@ -3536,6 +3555,149 @@ namespace AblatorDecals
             }
         }
 
+        // Smooth untiled ceramic shell for cockpit nose tip + sides/chines (S.CeramicSideDeg > 0):
+        // clipped cleanly to the exact mask contour and stack cuts via SkinPolygons, smoothly welded, lifted to tile top
+        // height with side walls along open edges, and clustered into per-normal glow bins so nose and sides glow realistically.
+        private void EmitCeramicShell(Dictionary<int, Acc> accs, List<int> order, TileResult result, List<TileOutline> outlines)
+        {
+            bool ExactInMask(Vector3 p)
+            {
+                if (cuts != null)
+                    foreach (Vector4 c in cuts)
+                        if (c.x * p.x + c.y * p.y + c.z * p.z + c.w > 1e-4f) return false;
+                if (S.ClipPlanes != null)
+                    foreach (Vector4 c in S.ClipPlanes)
+                        if (c.x * p.x + c.y * p.y + c.z * p.z + c.w <= 1e-4f) return true;
+                if (S.Regions != null)
+                    foreach (CoverRegion r in S.Regions)
+                        if (RegionDist(r, p, out _) <= 1e-4f) return true;
+                return false;
+            }
+            var keep = new List<(Vector3 a, Vector3 b, Vector3 c, int owner)>();
+            var ids = new List<int>();
+            var vp = new List<Vector3>();
+            var vn = new List<Vector3>();
+            var welded = new Dictionary<(int, int, int), int>();
+            int Weld(Vector3 p, Vector3 normal)
+            {
+                var key = (Mathf.RoundToInt(p.x * 10000), Mathf.RoundToInt(p.y * 10000), Mathf.RoundToInt(p.z * 10000));
+                if (!welded.TryGetValue(key, out int id))
+                {
+                    welded[key] = id = vp.Count;
+                    vp.Add(p);
+                    vn.Add(Vector3.zero);
+                }
+                vn[id] += normal;
+                return id;
+            }
+            Vector3 axis = S.TankAxis.sqrMagnitude > 0.5f ? S.TankAxis.normalized : Vector3.zero;
+            foreach (int k in shellTris)
+            {
+                if (!surface.Triangle(k, out Vector3 a, out Vector3 b, out Vector3 c, out Vector3 n, out int owner) || Obstacle(owner)) continue;
+                if (axis.sqrMagnitude > 0.5f && Vector3.Dot(n, axis) < -0.999f) continue;
+                foreach (var piece in SkinPolygons(a, b, c))
+                {
+                    Vector3 mid = Vector3.zero;
+                    foreach (Vector3 p in piece) mid += p;
+                    mid /= piece.Count;
+                    if (!ExactInMask(mid) || InKeepOut(mid) || UnderObstacle(mid, n)) continue;
+                    for (int j = 1; j + 1 < piece.Count; j++)
+                    {
+                        Vector3 an = Vector3.Cross(piece[j] - piece[0], piece[j + 1] - piece[0]);
+                        if (an.sqrMagnitude < 1e-16f) continue;
+                        keep.Add((piece[0], piece[j], piece[j + 1], owner));
+                        ids.Add(Weld(piece[0], an)); ids.Add(Weld(piece[j], an)); ids.Add(Weld(piece[j + 1], an));
+                    }
+                }
+            }
+            if (keep.Count == 0) return;
+            var edgeUse = new Dictionary<(int, int), int>();
+            for (int i = 0; i < ids.Count; i += 3)
+                for (int e = 0; e < 3; e++)
+                {
+                    int p = ids[i + e], q = ids[i + (e + 1) % 3];
+                    var key = p < q ? (p, q) : (q, p);
+                    edgeUse[key] = (edgeUse.TryGetValue(key, out int u0) ? u0 : 0) + 1;
+                }
+            float lift = S.SurfaceOffset + S.Thickness;
+            var top = new Vector3[vp.Count];
+            for (int i = 0; i < vp.Count; i++)
+            {
+                vn[i] = vn[i].sqrMagnitude > 1e-20f ? vn[i].normalized : decalN;
+                Vector3 nLift = vn[i];
+                if (cuts != null)
+                {
+                    foreach (Vector4 cp in cuts)
+                    {
+                        var cn = new Vector3(cp.x, cp.y, cp.z);
+                        if (Mathf.Abs(Vector3.Dot(cn, vp[i]) + cp.w) < 0.005f)
+                        {
+                            Vector3 proj = nLift - cn * Vector3.Dot(nLift, cn);
+                            if (proj.sqrMagnitude > 1e-6f) nLift = proj.normalized;
+                        }
+                    }
+                }
+                top[i] = vp[i] + nLift * lift;
+            }
+            // Spotless matte ceramic sample point (upper center of atlas cell 0,0, clear of SquareBlack serial numbers at lower half).
+            Vector2 ceramicUv = S.UvMode == UvMode.Atlas
+                ? new Vector2(0.5f / Math.Max(1, S.AtlasCols), 0.625f / Math.Max(1, S.AtlasRows))
+                : new Vector2(0.5f, 0.5f);
+            float cosBin = Mathf.Cos(S.BinAngleDeg * Mathf.Deg2Rad);
+            int maxBins = Math.Max(1, S.MaxBins);
+            for (int i = 0; i < keep.Count; i++)
+            {
+                var (a, b, c, o) = keep[i];
+                Vector3 fn = Vector3.Cross(b - a, c - a);
+                float area = 0.5f * fn.magnitude;
+                if (area < 1e-10f) continue;
+                fn.Normalize();
+                if (!accs.TryGetValue(o, out Acc acc)) { accs[o] = acc = new Acc(); order.Add(o); }
+                int bin = -1;
+                float bestDot = -2;
+                for (int j = 0; j < acc.BinSum.Count; j++)
+                {
+                    float d = Vector3.Dot(acc.BinSum[j].normalized, fn);
+                    if (d > bestDot) { bestDot = d; bin = j; }
+                }
+                if (bin < 0 || (bestDot < cosBin && acc.BinSum.Count < maxBins))
+                {
+                    acc.Bins.Add(new List<int>()); acc.BinSum.Add(Vector3.zero); acc.BinArea.Add(0);
+                    bin = acc.Bins.Count - 1;
+                }
+                acc.BinSum[bin] += fn * area;
+                acc.BinArea[bin] += area;
+                acc.AreaVecs.Add(fn * area);
+                acc.Covered += area;
+                result.CoveredArea += area;
+                List<int> tris = acc.Bins[bin];
+                int ia = ids[3 * i], ib = ids[3 * i + 1], ic = ids[3 * i + 2];
+                int v0 = Add(acc, top[ia], vn[ia], ceramicUv);
+                Add(acc, top[ib], vn[ib], ceramicUv);
+                Add(acc, top[ic], vn[ic], ceramicUv);
+                Tri(acc, tris, v0, v0 + 1, v0 + 2, fn);
+                Vector3 mid = (a + b + c) / 3;
+                int[] ci = { ia, ib, ic };
+                for (int e = 0; e < 3; e++)
+                {
+                    int p = ci[e], q = ci[(e + 1) % 3];
+                    var key = p < q ? (p, q) : (q, p);
+                    if (edgeUse[key] != 1) continue;
+                    Vector3 outward = Vector3.Cross(vp[q] - vp[p], fn);
+                    if (Vector3.Dot(outward, vp[p] - mid) < 0) outward = -outward;
+                    if (outward.sqrMagnitude < 1e-16f) continue;
+                    outward.Normalize();
+                    int w0 = Add(acc, top[p], outward, ceramicUv);
+                    Add(acc, top[q], outward, ceramicUv);
+                    Add(acc, vp[p], outward, ceramicUv);
+                    Add(acc, vp[q], outward, ceramicUv);
+                    Tri(acc, tris, w0, w0 + 1, w0 + 3, outward);
+                    Tri(acc, tris, w0, w0 + 3, w0 + 2, outward);
+                }
+            }
+            result.TileCount++;
+        }
+
         private void Emit(TileResult result, List<TileOutline> outlines)
         {
             var accs = new Dictionary<int, Acc>();
@@ -3570,6 +3732,8 @@ namespace AblatorDecals
                 result.CoveredArea += t.Area;
             }
 
+            if (S.CeramicSideDeg > 0 && shellTris != null && shellTris.Count > 0)
+                EmitCeramicShell(accs, order, result, outlines);
             if (S.FillHull && !HasClip && !S.Overlay && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0))
                 AddTankJointBed(accs);
             else if (S.FillHull && HasClip && !S.Overlay && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0))

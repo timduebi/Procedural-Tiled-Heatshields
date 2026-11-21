@@ -1216,7 +1216,7 @@ static class Program
                 CoverMesh.Write(ms, r);
                 bool same = ms.ToArray().SequenceEqual(data);
                 bool consistent = r.Parts.All(p => p.BinTriangles.All(b => b.All(i => i >= 0 && i < p.Vertices.Length)) && p.Normals.Length == p.Vertices.Length && p.Uvs.Length == p.Vertices.Length);
-                Check(r.TileCount > (kv.Key == "Mark1Cockpit" ? 400 : 500) && r.CoveredArea >= kv.Value.minArea && r.CoveredArea <= kv.Value.maxArea && inside && same && consistent,
+                Check(r.TileCount > (kv.Key == "Mark1Cockpit" ? 200 : 500) && r.CoveredArea >= kv.Value.minArea && r.CoveredArea <= kv.Value.maxArea && inside && same && consistent,
                     $"v11 cover file {kv.Key}_{shape}: {r.TileCount} tiles, {r.CoveredArea:F1} m2, inside the part, indices valid, writes back identically");
             }
     }

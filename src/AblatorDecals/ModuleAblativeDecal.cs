@@ -901,6 +901,7 @@ namespace AblatorDecals
                 settings.ClipPlanes = cover.Clip.Select(c => ToDecal(c, poses[0])).ToArray();
                 settings.CutPlanes = cover.Cut.Select(c => ToDecal(c, poses[0])).ToArray();
                 if (cover.Regions.Length > 0) settings.Regions = cover.Regions.Select(rg => ToDecal(rg, poses[0])).ToArray(); // v11 mask
+                settings.CeramicSideDeg = cover.CeramicSideDeg;
                 // 2 x the farthest hull point from the cockpit's origin: unrolled, the part size alone ends short of the windows
                 Vector3 origin = poses[0].MultiplyPoint3x4(Vector3.zero);
                 float size = 0;
@@ -987,6 +988,7 @@ namespace AblatorDecals
         {
             public Vector4[] Clip, Cut;
             public bool KeepRcs;          // M3 (1.5): keepRcs = true, the RCS nozzles of this cockpit stay free
+            public float CeramicSideDeg;  // 1.7.4: smooth untiled ceramic on nose tip & sides/chines (|dot(n, decalN)| <= sin(deg))
             public CoverRegion[] Regions = new CoverRegion[0]; // DESIGN-v11 G2/G3: REGION nodes (mask regions), part space
         }
 
@@ -1024,7 +1026,8 @@ namespace AblatorDecals
                         (isCut ? cut : clip).Add(new Vector4(n.x, n.y, n.z, -Vector3.Dot(n, pt)));
                     }
                     bool.TryParse(node.GetValue("keepRcs"), out bool keepRcs);
-                    covers[name.Trim().Replace('_', '.')] = new Cover { Clip = clip.ToArray(), Cut = cut.ToArray(), KeepRcs = keepRcs, Regions = node.GetNodes("REGION").Select(ParseRegion).Where(r => r != null).ToArray() };
+                    float.TryParse(node.GetValue("ceramicSideDeg"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float ceramicSideDeg);
+                    covers[name.Trim().Replace('_', '.')] = new Cover { Clip = clip.ToArray(), Cut = cut.ToArray(), KeepRcs = keepRcs, CeramicSideDeg = ceramicSideDeg, Regions = node.GetNodes("REGION").Select(ParseRegion).Where(r => r != null).ToArray() };
                 }
             }
             return p.partInfo != null && covers.TryGetValue(p.partInfo.name, out Cover c) && c.Clip.Length + c.Cut.Length + c.Regions.Length > 0 ? c : null;
@@ -1302,7 +1305,7 @@ namespace AblatorDecals
         private void RequestBuild()
         {
             if (destroyed || decalRoot == null) return;
-            if (running) { dirty = true; return; }
+            if (running) { dirty = true; if (activeJob != null) activeJob.Cancelled = true; return; }
             running = true;
             dirty = false;
             BuildJob job = MakeJob();
@@ -1326,9 +1329,9 @@ namespace AblatorDecals
         private void Receive(BuildJob job)
         {
             running = false;
-            if (destroyed || job.Cancelled) return;
-            Apply(job);                 // even if stale: the user sees progress while dragging
-            if (dirty) RequestBuild();  // then build the newest state once
+            if (destroyed) return;
+            if (!job.Cancelled) Apply(job); // even if stale: the user sees progress while dragging
+            if (dirty) RequestBuild();      // then build the newest state once (including right after a cancel)
         }
 
         // Main thread: meshes, colliders, readouts.
@@ -2586,7 +2589,7 @@ namespace AblatorDecals
         {
             public double LastTick = double.NaN;
             public TileGlow Surface;
-            public double Shown, Skin, FMax; // 1.7.1: skin temperature and the most exposed f of the vessel (local glow)
+            public double Shown, Skin, FMax, ExtTemp; // 1.7.1 / 1.7.4: skin temp, max facing, and external post-shock air temp
         }
 
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Vessel, VesselGlow> GlowFields =
@@ -2598,7 +2601,8 @@ namespace AblatorDecals
             double tick = Planetarium.GetUniversalTime();
             if (tick != field.LastTick)
             {
-                double area = 0, skinSum = 0, filmSum = 0, fluxSum = 0, fMax = 0;
+                double area = 0, skinSum = 0, filmSum = 0, fluxSum = 0, extAirSum = 0, fMax = 0;
+                double prevT = field.Surface != null ? field.Surface.T : 0;
                 foreach (var decal in VesselDecals())
                 {
                     if (decal == null || decal.vessel != vessel) continue;
@@ -2608,28 +2612,41 @@ namespace AblatorDecals
                         if (!host.Alive || target == null) continue;
                         var data = target.ptd;
                         double coeff = data != null && data.convectionArea > 0 ? data.finalCoeff / data.convectionArea : 0;
+                        double ext = data != null ? data.postShockExtTemp : target.skinTemperature;
                         Vector3 flow = host.DecalDirection(vWorld);
                         for (int b = 0; b < host.BinCount; b++)
                         {
                             double weight = host.BinAreas[b];
                             double fb = Math.Max(0, Vector3.Dot(host.BinNormals[b], flow));
                             if (weight > 0) fMax = Math.Max(fMax, fb);
-                            double film = weight * coeff * fb;
+                            // Heating is concentrated on windward faces (fb); convective cooling in cold air acts across the boundary layer.
+                            double fbEff = field.Surface != null ? TileGlow.EffectiveFacing(fb, ext, prevT) : fb;
+                            double film = weight * coeff * fbEff;
                             area += weight;
                             skinSum += weight * target.skinTemperature;
+                            extAirSum += weight * ext;
                             filmSum += film;
-                            fluxSum += film * (data != null ? data.postShockExtTemp : target.skinTemperature);
+                            fluxSum += film * ext;
                         }
                     }
                 }
                 if (area <= 0) return;
                 field.LastTick = tick;
                 double skin = skinSum / area;
+                double extAir = extAirSum / area;
+                double effExt = filmSum > 0 ? fluxSum / filmSum : extAir;
                 field.Skin = skin;
                 field.FMax = fMax;
-                if (field.Surface == null) field.Surface = new TileGlow(skin) { Emissivity = glowEmissivity, HeatCapacity = glowHeatCapacity, Conduction = glowConduction };
+                field.ExtTemp = effExt;
+                if (field.Surface == null)
+                {
+                    field.Surface = new TileGlow(skin) { Emissivity = glowEmissivity, HeatCapacity = glowHeatCapacity, Conduction = glowConduction };
+                    field.Shown = skin;
+                }
                 double dt = TimeWarp.fixedDeltaTime;
-                double temperature = field.Surface.Step(dt, skin, filmSum > 0 ? fluxSum / filmSum : skin, filmSum / area, 1);
+                // Radiative/conductive sink never holds tiles glowing in cold post-reentry air or vacuum.
+                double sink = Math.Max(250.0, Math.Min(skin, extAir));
+                double temperature = field.Surface.Step(dt, sink, effExt, filmSum / area, 1);
                 double fade = glowFadeTime > 0 ? 1 - Math.Exp(-dt / glowFadeTime) : 1;
                 field.Shown += (temperature - field.Shown) * fade;
             }
@@ -2648,14 +2665,13 @@ namespace AblatorDecals
                 if (checkKspGlow && KspGlowRenderers(p) is List<Renderer> kspList && kspList.Remove(h.Renderer)) h.Renderer.SetPropertyBlock(null);
                 bool show = glowEnabled && h.HasGlow;
                 if (!show) continue;
-                // 1.7.1: each glow bin by how it faces the flow (TileGlow.LocalWeight), the joints with the area-weighted mean
+                // 1.7.1 / 1.7.4: each glow bin by how it faces the flow (only while external air is hot enough to heat tiles)
                 Vector3 flow = h.DecalDirection(vWorld);
                 Color jointSum = Color.black;
                 double jointArea = 0;
                 for (int b = 0; b < h.BinCount; b++)
                 {
-                    double w = TileGlow.LocalWeight(Math.Max(0, Vector3.Dot(h.BinNormals[b], flow)), field.FMax);
-                    Color c = GlowColor((float)(field.Skin + (field.Shown - field.Skin) * w));
+                    Color c = GlowColor((float)TileGlow.BinTemp(field.Skin, field.Shown, field.ExtTemp, Math.Max(0, Vector3.Dot(h.BinNormals[b], flow)), field.FMax));
                     glowShownMax = Math.Max(glowShownMax, Mathf.Max(c.r, c.g, c.b));
                     jointSum += c * (float)h.BinAreas[b];
                     jointArea += h.BinAreas[b];

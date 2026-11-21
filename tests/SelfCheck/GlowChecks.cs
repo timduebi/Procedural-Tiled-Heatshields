@@ -35,5 +35,16 @@ static class GlowChecks
         var z = new TileGlow(900);
         for (int i = 0; i < 200; i++) z.Step(0.5, 900, 6000, 0.05, 0);
         Check(Math.Abs(z.T - 900) < 1e-6, "glow with f = 0 stays at skin temperature");
+
+        // 1.7.4: pitching up in cool air after reentry never spikes display temp; hot reentry still shows windward gradient
+        double levelCool = TileGlow.BinTemp(650, 520, 320, 0.0, 0.8);
+        double pitchUpCool = TileGlow.BinTemp(650, 520, 320, 0.8, 0.8);
+        Check(Math.Abs(levelCool - 520) < 1e-6 && Math.Abs(pitchUpCool - 520) < 1e-6,
+            $"glow cool-air pitch-up: level={levelCool:F1} K, pitchUp={pitchUpCool:F1} K (no red flash)");
+        double hotLee = TileGlow.BinTemp(1000, 1400, 2200, 0.0, 1.0);
+        double hotWind = TileGlow.BinTemp(1000, 1400, 2200, 1.0, 1.0);
+        Check(hotWind > 1450 && hotLee < 1200, $"glow hot reentry gradient: lee={hotLee:F0} K, windward={hotWind:F0} K");
+        Check(TileGlow.EffectiveFacing(0.0, 310, 850) >= 0.65 && TileGlow.EffectiveFacing(0.0, 2000, 850) == 0.0,
+            "glow effective facing: cools in level flight, heats only windward");
     }
 }

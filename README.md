@@ -4,7 +4,7 @@ Language: **English** | [Deutsch](README.de.md)
 
 AblatorDecals is a mod for Kerbal Space Program 1.12.5. The **Ablative Heat Tiles** part (`ablativeDecal`) attaches to the surface of a part like a sticker and places thin 3D thermal protection tiles directly onto its hull. Surface-attached landing gear, air intakes, and control surfaces on that part can receive their own tile shells, and tiles on moving parts animate with them. Patterns mimic Starship (hexagons) or Space Shuttle (squares). Thermally, the decal acts as an ablative heat shield: during reentry it absorbs convection heat from the covered parts and consumes Ablator, all while remaining a single part.
 
-Version 1.7.3 has been verified offline with the full self-test suite and the preview renderer against KSP part models; final in-game verification is pending. See [CHANGELOG.md](CHANGELOG.md) for version history and [CLAUDE-HANDOFF.md](CLAUDE-HANDOFF.md) for development handoff notes.
+Version 1.7.4 has been verified offline with the full self-test suite and the preview renderer against KSP part models; final in-game verification is pending. See [CHANGELOG.md](CHANGELOG.md) for version history and [CLAUDE-HANDOFF.md](CLAUDE-HANDOFF.md) for development handoff notes.
 
 ## Installation
 

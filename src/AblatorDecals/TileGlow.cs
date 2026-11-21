@@ -23,6 +23,21 @@ namespace AblatorDecals
             return 0.35 + 0.85 * x * x * (3 - 2 * x);
         }
 
+        // 1.7.4: directional heating acts on windward faces (fb); convective cooling in cold air acts across the boundary layer.
+        public static double EffectiveFacing(double fb, double extTemp, double tileTemp) =>
+            extTemp < tileTemp ? Math.Max(fb, 0.65) : fb;
+
+        // 1.7.4: per-bin display temperature. Directional LocalWeight (0.35..1.20) smoothly activates only while external air
+        // is hot enough to heat tiles (> 550 K), so pitching up in cool air after reentry never flashes the heatshield red.
+        public static double BinTemp(double skin, double shown, double extTemp, double f, double fMax)
+        {
+            double u = Math.Max(0.0, Math.Min(1.0, (extTemp - 550.0) / 200.0));
+            double activeHeat = u * u * (3.0 - 2.0 * u);
+            double w = 1.0 + (LocalWeight(f, fMax) - 1.0) * activeHeat;
+            double baseT = Math.Min(skin, shown);
+            return baseT + (shown - baseT) * w;
+        }
+
         // joints glow with the tiles (1.7.1: no black lines on hot tiles), dimmer
         public const float JointGlow = 0.75f;
 

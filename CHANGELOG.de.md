@@ -2,6 +2,12 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.7.4 (2026-11-21)
+
+- **Glatte schwarze ungekachelte Keramik an Spitze & Seiten von Mk1 und Mk2 (`ceramicSideDeg`):** Beim Mk2- (`58°`) und Mk1-Cockpit (`50°`) werden Nasenspitze und beide Seiten/Chines als glatte, exakt an der Maske geschnittene schwarze Keramikschale (mit richtungsabhängigen Glüh-Bins und bündigen Stapelkanten) umgesetzt, während Bauch und Oberseite vor den Fenstern echte 3D-Kacheln (Hex/Quadrat) behalten. Mk3 bleibt vollständig mit echten 3D-Kacheln bestückt. Mk1- und Mk2-Cockpithüllen neu gebacken.
+- **Glüh-Bug beim Hochpitchen nach dem Reentry behoben:** Konvektive Kühlung in kalter Luft wirkt nun auch im Horizontalflug über die gesamte Grenzschicht (`TileGlow.EffectiveFacing`), die Abkühlung bleibt nicht mehr an der warmen Resthaut hängen, und die richtungsabhängige Glüh-Gewichtung (`TileGlow.BinTemp`) greift nur noch, solange die Außenluft heiß genug zum Aufheizen ist (`> 550 K`). Beim Hochpitchen im langsamen Flug nach dem Reentry glüht das Hitzeschild nicht mehr rot auf.
+- **~15× schnellerer Wechsel zwischen Hex und Quadrat auf Mk2-Teilen:** Das alte `Fill()` entfällt auf normalen Mk2-Rumpfteilen (dort schließt das schnelle Fugenbett `AddTankJointBed` bereits in < 2 ms), wodurch `mk2DockingPort` von ~2.100 ms auf ~128 ms und `mk2CrewCabin` von ~1.886 ms auf ~139 ms sinken. Laufende Editor-Jobs werden bei sofortigem Umschalten direkt abgebrochen.
+
 ## 1.7.3 (2026-11-21)
 
 - **Cockpits (Mk1 / Mk2 / Mk3) mit sauberen echten 3D-Kacheln:** Die frühere Cockpit-Randfüllung (die gekrümmte Randkacheln entfernte und flache schwarze Flecken sowie Löcher erzeugte) wurde durch exaktes Masken-Clipping direkt beim Setzen der Kacheln und ein zurückgesetztes dunkles Fugenbett (`AddMaskJointBed`) ersetzt. Nasenkappen (`CapShell`/`CurvedShell`) greifen nur noch an echt doppelt gekrümmten Nasenspitzen, sodass 1D-Kanten (Mk2-Chine) und Bauchflächen (Mk3) vollständig aus echten 3D-Kacheln bestehen. Asymmetrischen Ausschnitt am Mk3-Cockpit (`CockpitCover.cfg`) symmetrisch gemacht. Alle sechs vorgefertigten Cockpithüllen (`Hex` und `Square`) neu gebacken (~3× kleinere Dateien, 100 % Maskenabdeckung, 0 überstehende Kacheln).

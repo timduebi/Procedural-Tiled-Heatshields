@@ -209,6 +209,7 @@ static class Program
                 {
                     cover = true;
                     keepRcs = (cn.Get("keepRcs") ?? "").Trim().ToLowerInvariant() == "true";
+                    if (cn.Get("ceramicSideDeg") is string csd) s.CeramicSideDeg = Flt(csd);
                     var planes = new List<Vector4>();
                     var cuts = new List<Vector4>();
                     foreach (Node pn in cn.Nodes.Where(c => c.Name == "PLANE"))

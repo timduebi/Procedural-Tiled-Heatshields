@@ -2,6 +2,12 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.7.4 (2026-11-21)
+
+- **Smooth black untiled ceramic on Mk1 & Mk2 cockpit nose tip and sides (`ceramicSideDeg`):** Mk2 (`58°`) and Mk1 (`50°`) cockpits now render a sleek, mask-clipped smooth matte black ceramic shell over the nose tip and both sides/chines (with per-normal reentry glow bins and flush stack-seam cuts), while keeping real 3D individual Hex/Square tiles on the belly and the upper nose ahead of the windshield. Mk3 remains 100% real 3D tiles. All Mk1 and Mk2 pre-baked cockpit covers rebaked.
+- **Fixed false red glow when pitching up after reentry:** Convective cooling in cold air now acts across the boundary layer even in level flight (`TileGlow.EffectiveFacing`), radiative/conductive cooling no longer gets stuck at residual hull skin temperature, and directional airflow glow weighting (`TileGlow.BinTemp`) smoothly activates only while external air is hot enough to heat tiles (`> 550 K`), so pitching up at subsonic/transonic speeds after reentry never flashes the shield red.
+- **~15× faster Hex ↔ Square switching on Mk2 parts:** Removed the legacy `Fill()` pass from non-overlay Mk2 hull parts (which took 1–2.1 s per part while `AddTankJointBed` already closes the hull in < 2 ms), cutting `mk2DockingPort` rebuilds from ~2,100 ms to ~128 ms and `mk2CrewCabin` from ~1,886 ms to ~139 ms. Also immediately cancels stale in-flight editor background jobs when a new switch is requested.
+
 ## 1.7.3 (2026-11-21)
 
 - **Cockpits (Mk1 / Mk2 / Mk3) with clean 3D individual tiles:** Replaced the old cockpit border-fill pass (which dropped curved border tiles and produced flat black patches and holes) with exact contour clipping directly in tile placement plus a recessed dark joint underlay (`AddMaskJointBed`). Restricted nose caps (`CapShell`/`CurvedShell`) to true doubly-curved nose tips so 1D chines and belly faces on Mk2/Mk3 stay tiled with real 3D tiles. Fixed asymmetric nose-panel cutout on the Mk3 cockpit (`CockpitCover.cfg`). All six pre-baked cockpit covers (`Hex` and `Square`) rebaked (~3× smaller files, 100% mask coverage, 0 protruding tiles).
