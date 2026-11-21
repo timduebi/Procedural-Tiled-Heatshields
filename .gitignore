@@ -1,0 +1,14 @@
+# Ignore build outputs and local working files
+**/bin/
+**/obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.pdb
+
+# Local tooling / preview renders / input screenshots
+/.claude/
+/preview/
+/input/
+/SurfaceIndex.cs

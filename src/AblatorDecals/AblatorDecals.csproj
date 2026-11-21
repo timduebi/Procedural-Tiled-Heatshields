@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <Version>1.7.3.0</Version>
+    <AssemblyVersion>1.7.3.0</AssemblyVersion>
+    <FileVersion>1.7.3.0</FileVersion>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Override with: dotnet build -p:KSPDir="C:\path\to\KSP" -->
+    <KSPDir Condition="'$(KSPDir)' == ''">F:\Benutzer\Dokumente\science test</KSPDir>
+    <Managed>$(KSPDir)\KSP_x64_Data\Managed</Managed>
+    <ModGameData>$(MSBuildProjectDirectory)\..\..\GameData\AblatorDecals</ModGameData>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Reference Include="Assembly-CSharp" HintPath="$(Managed)\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="UnityEngine" HintPath="$(Managed)\UnityEngine.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(Managed)\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.PhysicsModule" HintPath="$(Managed)\UnityEngine.PhysicsModule.dll" Private="false" />
+    <Reference Include="UnityEngine.IMGUIModule" HintPath="$(Managed)\UnityEngine.IMGUIModule.dll" Private="false" />
+    <Reference Include="UnityEngine.AnimationModule" HintPath="$(Managed)\UnityEngine.AnimationModule.dll" Private="false" />
+  </ItemGroup>
+
+  <!-- Put the DLL into the repo's GameData folder, then mirror that folder into the KSP install. -->
+  <Target Name="InstallToKSP" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModGameData)\Plugins" />
+    <ItemGroup>
+      <ModFiles Include="$(ModGameData)\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ModFiles)" DestinationFiles="@(ModFiles->'$(KSPDir)\GameData\AblatorDecals\%(RecursiveDir)%(Filename)%(Extension)')" Condition="Exists('$(KSPDir)\GameData')" />
+  </Target>
+
+</Project>

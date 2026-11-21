@@ -1,0 +1,235 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+using UnityEngine.Rendering;
+using Object = UnityEngine.Object;
+
+namespace AblatorDecals
+{
+    // Destroys itself when the part that created it was cloned (the clone's owner field is not serialized, so it is null).
+    public class AblativeDecalTilesMarker : MonoBehaviour
+    {
+        [NonSerialized] private PartModule owner;
+
+        public void SetOwner(PartModule module) => owner = module;
+
+        private void Start()
+        {
+            if (owner != null) return;
+            Part p = GetComponentInParent<Part>();
+            transform.SetParent(null, false); // out of the part's hierarchy now, so the cache reset below cannot pick it up
+            Destroy(gameObject);
+            if (p != null) TileHost.ResetRendererCaches(p);
+        }
+    }
+
+    // The tile mesh lying on one target part: one GameObject, one mesh, one material per glow bin + joint + back.
+    public class TileHost
+    {
+        private static readonly Color Dark = Color.clear; // no glow: premultiplied black (see ModuleAblativeDecal.GlowColor)
+
+        public readonly Part TargetPart;
+        public GameObject Go { get; private set; }
+
+        // false once Unity destroyed the object (target part died) or after Destroy()
+        public bool Alive => Go != null && Renderer != null && Mesh != null;
+        public MeshRenderer Renderer { get; private set; }
+        public Mesh Mesh { get; private set; }
+        public Material[] Materials { get; private set; } = new Material[0]; // bins..., joint, back
+        public int BinCount { get; private set; }
+
+        // decal space data, for thermal and glow
+        public Vector3[] BinNormals = new Vector3[0];
+        public float[] BinAreas = new float[0];
+        public Vector3[] TileAreaVectors = new Vector3[0];
+        public Color[] GlowSet = new Color[0];   // colour last written to the bin material
+
+        // host space -> decal space at build time (a flap host: decal space with the flap in neutral position)
+        private Quaternion toDecal = Quaternion.identity;
+
+        // World direction in the space of the decal data above, following the host as it moves (flap deflection, flex).
+        public Vector3 DecalDirection(Vector3 world) => Go != null ? toDecal * Go.transform.InverseTransformDirection(world) : Vector3.zero;
+
+        public TileHost(PartModule owner, Part targetPart, Transform parent, int layer, string name)
+        {
+            TargetPart = targetPart;
+            Go = new GameObject(name) { layer = layer };
+            Go.transform.SetParent(parent, false);
+            Go.AddComponent<AblativeDecalTilesMarker>().SetOwner(owner);
+            Go.AddComponent<MeshFilter>();
+            Renderer = Go.AddComponent<MeshRenderer>();
+            Renderer.shadowCastingMode = ShadowCastingMode.On;
+            Renderer.receiveShadows = true;
+        }
+
+        // Fills the mesh (vertices go from decal space to this host's space) and makes fresh materials from the templates.
+        public void Apply(PartTiles t, Matrix4x4 decalToHost, Material tile, Material joint, Material back)
+        {
+            if (Go == null) return;
+            int bins = t.BinTriangles.Length;
+            BinCount = bins;
+            BinNormals = t.BinNormals;
+            BinAreas = t.BinAreas;
+            TileAreaVectors = t.TileAreaVectors;
+            Matrix4x4 hostToDecal = decalToHost.inverse;
+            toDecal = Quaternion.LookRotation(hostToDecal.GetColumn(2), hostToDecal.GetColumn(1));
+
+            int n = t.Vertices.Length;
+            var verts = new Vector3[n];
+            var norms = new Vector3[n];
+            for (int i = 0; i < n; i++)
+            {
+                verts[i] = decalToHost.MultiplyPoint3x4(t.Vertices[i]);
+                norms[i] = decalToHost.MultiplyVector(t.Normals[i]).normalized;
+            }
+
+            if (Mesh == null)
+            {
+                Mesh = new Mesh { name = "AblativeDecalTiles" };
+                Go.GetComponent<MeshFilter>().sharedMesh = Mesh;
+            }
+            Mesh.Clear();
+            Mesh.indexFormat = n > 65000 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+            Mesh.vertices = verts;
+            Mesh.normals = norms;
+            Mesh.uv = t.Uvs;
+            Mesh.subMeshCount = bins + 2;
+            for (int i = 0; i < bins; i++) Mesh.SetTriangles(t.BinTriangles[i], i);
+            Mesh.SetTriangles(t.JointTriangles, bins);
+            Mesh.SetTriangles(t.BackTriangles, bins + 1);
+            Mesh.RecalculateBounds();
+
+            DestroyMaterials();
+            Materials = new Material[bins + 2];
+            for (int i = 0; i < bins; i++) Materials[i] = new Material(tile) { name = "AblativeDecalTile" + i };
+            Materials[bins] = new Material(joint) { name = "AblativeDecalJoint" };
+            Materials[bins + 1] = new Material(back) { name = "AblativeDecalBack" };
+            Renderer.sharedMaterials = Materials;
+
+            GlowSet = new Color[bins];
+            for (int i = 0; i < bins; i++) SetBinGlow(i, Dark);
+            JointSet = Color.black;
+        }
+
+        // editor: exact (non-convex) collider on the tile mesh for clicks and surface attach; off (removed) on gear hosts
+        public void SetMeshCollider(bool want, bool enabled)
+        {
+            if (Go == null) return;
+            MeshCollider mc = Go.GetComponent<MeshCollider>();
+            if (!want)
+            {
+                if (mc != null) Object.Destroy(mc);
+                return;
+            }
+            if (mc == null) mc = Go.AddComponent<MeshCollider>();
+            mc.sharedMesh = null; // re-cook after the mesh changed
+            mc.sharedMesh = Mesh;
+            mc.enabled = enabled;
+        }
+
+        public void EnableCollider(bool on)
+        {
+            MeshCollider mc = Go != null ? Go.GetComponent<MeshCollider>() : null;
+            if (mc != null) mc.enabled = on;
+        }
+
+        // 1.5 (M1): the glow goes into _EmissiveColor (KSP/Emissive/*: _Emissive texture x _EmissiveColor, per tile a soft core
+        // to rim gradient); a shader without it falls back to _TemperatureColor (flat per bin, as up to 1.4)
+        public static readonly int EmissiveColorID = Shader.PropertyToID("_EmissiveColor"), EmissiveID = Shader.PropertyToID("_Emissive");
+        public bool HasGlow => BinCount > 0 && GlowProperty(Materials[0]) != 0;
+        public static int GlowProperty(Material m) =>
+            m.HasProperty(EmissiveColorID) ? EmissiveColorID : m.HasProperty(PhysicsGlobals.TemperaturePropertyID) ? PhysicsGlobals.TemperaturePropertyID : 0;
+
+        // true while the renderer still holds our materials with our textures
+        public bool Intact(Texture tex, Texture glow) =>
+            Renderer != null && Renderer.sharedMaterials.SequenceEqual(Materials) &&
+            (tex == null || Materials.Take(BinCount).All(m => m.mainTexture == tex)) &&
+            (glow == null || Materials.Take(BinCount).All(m => !m.HasProperty(EmissiveID) || m.GetTexture(EmissiveID) == glow));
+
+        // what differs (for the log): first slot whose material is not ours, or the texture
+        public string Difference(Texture tex)
+        {
+            if (Renderer == null) return "renderer gone";
+            Material[] now = Renderer.sharedMaterials;
+            if (now.Length != Materials.Length) return $"{now.Length} materials instead of {Materials.Length}";
+            for (int i = 0; i < now.Length; i++)
+                if (now[i] != Materials[i])
+                    return $"slot {i}: '{(now[i] != null ? now[i].name : "null")}' shader '{(now[i] != null && now[i].shader != null ? now[i].shader.name : "?")}'";
+            return $"texture '{(BinCount > 0 && Materials[0].mainTexture != null ? Materials[0].mainTexture.name : "null")}' instead of '{(tex != null ? tex.name : "null")}'";
+        }
+
+        public void Restore(Texture tex, Texture glow)
+        {
+            if (Renderer == null) return;
+            Renderer.sharedMaterials = Materials;
+            for (int i = 0; i < BinCount; i++)
+            {
+                Materials[i].mainTexture = tex;
+                if (glow != null && Materials[i].HasProperty(EmissiveID)) Materials[i].SetTexture(EmissiveID, glow);
+            }
+        }
+
+        public void SetChar(Color c)
+        {
+            if (Go == null) return;
+            for (int i = 0; i < BinCount; i++)
+                if (Materials[i].HasProperty("_Color")) Materials[i].SetColor("_Color", c);
+        }
+
+        // 1.7.1: the joint material glows too (KSP/Emissive/Diffuse), one colour per host
+        public Color JointSet = Color.black;
+        public void SetJointGlow(Color c)
+        {
+            if (BinCount <= 0 || BinCount >= Materials.Length) return;
+            Material m = Materials[BinCount];
+            if (m != null && m.HasProperty(EmissiveColorID)) m.SetColor(EmissiveColorID, c);
+            JointSet = c;
+        }
+
+        public void SetBinGlow(int bin, Color c)
+        {
+            if (bin < 0 || bin >= BinCount) return;
+            Material m = Materials[bin];
+            int id = GlowProperty(m);
+            if (id != 0) m.SetColor(id, c);
+        }
+
+        private void DestroyMaterials()
+        {
+            foreach (Material m in Materials) if (m != null) Object.Destroy(m);
+            Materials = new Material[0];
+        }
+
+        // KSP caches a part's renderers: the model caches, Part.HighlightRenderer (Part.SetOpacity calls SetPropertyBlock on
+        // every entry without a null check) and the Highlighter. Call after renderers under the part's model came or went;
+        // everything is rebuilt from the live hierarchy, so no destroyed renderer can stay in a list.
+        public static void ResetRendererCaches(Part p)
+        {
+            p.ResetModelRenderersCache();
+            p.ResetModelMeshRenderersCache();
+            p.ResetModelSkinnedMeshRenderersCache();
+            List<Renderer> list = p.FindModelRenderersCached(); // a fresh copy
+            list.RemoveNonHighlightableRenderers();
+            p.HighlightRenderer = list;
+            p.RefreshHighlighter();
+        }
+
+        public void Destroy()
+        {
+            DestroyMaterials();
+            if (Mesh != null) Object.Destroy(Mesh);
+            if (Go != null)
+            {
+                // Destroy is deferred to the end of the frame, and Part.FindModelComponents walks transforms regardless of
+                // the active state: leave the part's hierarchy now so a cache rebuilt this frame cannot hold the dying renderer.
+                Go.SetActive(false);
+                Go.transform.SetParent(null, false);
+                Object.Destroy(Go);
+            }
+            Mesh = null;
+            Go = null;
+            Renderer = null;
+        }
+    }
+}

@@ -1,0 +1,179 @@
+Language: **English** | [Deutsch](CHANGELOG.de.md)
+
+# Changelog
+
+## 1.7.2 (2026-11-21)
+
+- Cockpit polish: grids now unwrap cleanly across sharp edges (Mk2 chine) instead of starting a second flood; border fill extends slightly underneath trimmed edge tiles (~1 cm strip, eliminating bright gaps), and untextured fill pieces are dark; all cockpits rebaked. Shielded docking port hood receives border fill and a closed tip. Preview renderer: undersides shaded dark like in-game.
+
+## 1.7.1 (2026-11-21)
+
+Following the 1.7.0 playtest. Verified offline (0 build warnings/errors, SelfCheck passing), renders in `preview/v15/`.
+
+- **Smooth cockpit masks** (Mk1/Mk2/Mk3): tiles protruding more than 5 mm outside the mask are dropped; border fill closes flush along the mask contour (dark, without jagged steps), including across the Mk2 chine. Mk3: fixed the dark patch underneath the cockpit (caused by a large belly face misidentified as a nose cap). All six cockpits rebaked.
+- **mk2DockingPort** is treated as a regular fuselage part again (shielded docking ports now only apply to the capped port with a single stack node).
+- **Winglets/Flaps**: skin wraps up to 150° (no remaining bright edge), and a winglet spanning a seam to a neighbor part is tiled on both sides of the seam (stack cuts now apply only to doors).
+- **Shielded docking port (capped)**: no tiles underneath the closed hood (base and doors treat each other as obstacles).
+- **Glow**: reduced contrast between individual tiles (flatter emission textures), joints glow along with tiles (`KSP/Emissive/Diffuse`), and tiles glow hotter or cooler based on airflow incidence (nose, belly, leading edges hotter; smoothstep transition). → `preview/v15/glow.png`.
+
+## 1.7.0 (2026-11-21)
+
+Following the 1.6.2 playtest. Verified offline (0 build warnings/errors, SelfCheck passing), renders in `preview/v14/`.
+
+- **Real individual tiles instead of projected skin** on fuselages, Mk2 parts, cargo bays, and cockpits; continuous skin remains only for landing gear, air intakes, winglets, and control surfaces. This also eliminates gaps at part seams (where projected skin lifted along rounded part ends and pulled back from seams).
+- **Squares wrap as far as Hex** across the chine of Mk2 tanks and Mk2/Mk3 cargo bays: across sharp creases, tiles unwrap onto the adjacent face (Hex already crossed via diagonal steps).
+- **Cockpits rebaked** (same masks): island floods no longer place tiles between tiles of the main flood (which caused Voronoi artifacts with Squares); they now maintain one cell spacing for uniform tiles.
+- Gap filling restricted to borders (at most 1.5 tiles from a real tile).
+- **Shielded Docking Port** (Clamp-O-Tron Shielded) on a tiled part: real tiles on the protective doors that animate with the port; docking face stays clear, base gets skin coverage.
+- VAB Organizer: Heat Shields subcategory (`Patches/VABOrganizer.cfg`). Tech tree: `supersonicFlight` alongside the Mk2 cockpit, `entryCost = 4000`.
+- Preview tool: `acc=1` (include tiles from previous decals to inspect seams), `--mudump <.mu>`.
+
+## 1.6.2 (2026-11-20)
+
+Following the 1.6.0/1.6.1 playtest. Verified offline (0 build warnings/errors, SelfCheck passing), renders in `preview/v13/`.
+
+- **Closed skin on all Mk2 fuselage parts** (tanks, cabin, docking port, adapters; excluding cockpits, cargo bays, lander can): Squares reach as high as Hex, no ridge along the chine, no gaps at part seams. Interior surfaces (docking port tunnel) stay clear.
+- **Improved skin mapping** (also cockpit covers, gear, intakes, fins): arc-length parameterization around the hull instead of angular (no stretched/squashed side tiles, no fan distortion at intake ends); flat parts (winglets, fins, flaps) projected straight through their thin axis (no zigzag edges). All six cockpits rebaked.
+- **Flush part seams**: tiles cut at a plane or mask no longer have a bevel there; upper edges of adjacent parts meet without a V-groove (including cockpit-to-fuselage).
+- **Landing gear**: side faces no longer dropped in sawtooth patterns (corner-based instead of center-based check); top faces (> 95° from decal normal) stay clear; gear on the opposite side of the part is excluded from the decal.
+- **Glow**: banding in 1.6.0 came from per-bin glow (6° bins grouped greedily by normal) and per-part skin temperature; since 1.6.1 one shared value per craft drives all tiles, skins, and cockpit covers. Preview: `glow=<emissiveTexture> glowK=<K>`.
+- Preview: `edgeB`/`edgeT` views (tile ends at stack faces), debug modes `gearWrap`, `gearDebug`.
+
+## 1.6.1 (2026-11-20)
+
+- Mk3 cockpit reworked: nose cap with angular chin plus dark side panel step behind the hatch; belly tiled, upper fuselage clear. All six cockpits rebaked (100% mask coverage).
+- Mk1/Mk2: stack-face cut plane shifted slightly back (removes stray strip along front rim).
+- Stronger peak glow: added stops at 1700 K (white × 1.65) and 2000 K (white × 2.8).
+
+## 1.6.0 (2026-11-20)
+
+- Pre-baked cockpit covers for Mk1 C, Mk2 B (side line raised 12 cm), and Mk3 B. All three support Hex and Square as well as attached landing gear.
+- Continuous tiled shells for landing gear and air intakes; landing light reflector face stays clear. Flaps follow the covered side.
+- Gap filling at cockpit masks and Mk2 tanks, plus dark joint bed closing tank sides up to the wrap limit for both patterns.
+- Updated glow textures for Square/Black, Hex/Ceramic, and Square/Ceramic. Reentry summary logs peak tile temp and peak intensity.
+- Measurements and reproduction steps in [CLAUDE-HANDOFF.md](CLAUDE-HANDOFF.md).
+
+## 1.5.0 (2026-11-19)
+
+Following the 1.4.0 playtest. Verified offline (clean build, SelfCheck passing, KSP APIs and shaders checked against game files).
+
+### Module
+
+- **Three-state glow**: cool (no glow below 550 K), medium (800 K: orange with darker edges), peak (1300 K: white-yellow core with orange edges), smoothstepped and time-damped. Uses `KSP/Emissive/Specular` (`_Emissive`, `_EmissiveColor`, plus `_TemperatureColor`) with per-pattern emission atlases (`Textures/HexGlow.png`, `SquareGlow.png`). Plain ceramic glows flat (`glowFlatColor`), falling back to `_TemperatureColor` without emissive shader support. Preview: `preview/v11/glow-states.png`.
+- **Fixed glow banding**: narrowed bin angle from 20° to 6° (`glowMaxBins` = 48), averaged skin temperature and convection coefficient by tile area across the entire decal so seams never jump, and replaced the multi-plateau 5-stop ramp with smooth three-state transitions.
+- **New slider "Covered height"** (Area, 1–100%, 1% steps, default 100%): clips along the decal normal as an additional straight cut plane combined with Max wrap angle.
+- **RCS nozzles** now remain uncovered only on cockpits with `keepRcs = true` in `CockpitCover.cfg` (Mk2 yes, Mk3 no); elsewhere tiles cover them. Hatches (`Airlock`) remain uncovered everywhere.
+- **Mk3 cargo bay / ramp**: in the editor, flap, bay door, and ramp tiles now attach directly to their animated transforms (without mesh colliders that would hijack clicks), moving properly when opened/closed. Dark tile backsides instead of white.
+- **"tile materials ... restoring"**: identified as harmless KSP material cloning (`EditorLogic.highlightSelected` and `MaterialColorUpdater.CreateRendererList`); the material guard restores custom materials and emission textures automatically.
+- Updated `build` and `flight check` log formats (`glow=...`, `emissive=...`).
+- `[assembly: KSPAssembly("AblatorDecals", 1, 5)]`, Version 1.5.0; en/de localization updated.
+
+### Geometry
+
+- **Dedicated overlays for attached parts** (control surfaces, tailfins/winglets, air intakes, cargo bay doors, Mk3 cargo ramp, retracted landing gear): main decal tiles only the host part while each attached part gets its own deterministic exterior tile shell anchored to its own transform, independent of decal position/size/angle.
+- **Main decal stops at attachment bases**: attached parts act as obstacles (tiles cut flush around their footprint), except retracted landing gear underneath which hull tiles continue.
+- **Air intakes**: lip and rear exterior tiled; intake opening and front 35 cm duct walls left clear; inward-facing self-occluding faces skipped.
+- Pure wings/strakes (`ModuleLiftingSurface` without control surface) do not get automatic overlays and use their own decals.
+- **Cargo bay doors and Mk3 ramp** inherit Max wrap angle, Covered height, and stack cuts from the main decal in closed pose.
+- **Cockpit masks (`REGION` in `CockpitCover.cfg`)**: closed contours on chart planes with smooth straight-cut edges and island flooding.
+- **Pre-baked cockpit covers** (`Covers/<part>_<Hex|Square>.bin`, generated via `tools/Preview --bake-cover`), disabling fixed sliders ("Pre-made cover") while keeping finish/texture choices active.
+- **Mk3 and Mk2 cockpits** redesigned to match Shuttle-style masks with rounded chin/window cutouts and round RCS cutouts (`keepRcs`).
+- `SurfaceIndex.Raycast` splits long rays for full cargo-bay visibility checks.
+
+## 1.4.0 (2026-11-16)
+
+Following the 1.3.0 playtest. Verified offline.
+
+### Fixed
+
+- **Attaching parts onto tiles**: disabled tile and ring colliders whenever any non-decal part is held by the cursor (including Alt-copied parts and subassemblies) so parts attach cleanly to the hull underneath and shift outward by tile thickness.
+- **Missing flaps and air intakes** in Whole part mode restored.
+- **Landing gear coverage**: tiles cover the full retracted exterior shell of gear (including nacelles, doors, and skinned meshes like GearSmall), omitting only hull-facing/buried/internal wheel & strut faces.
+
+### Added
+
+- **Keep-out zones**: hatches (`Airlock` + 5 cm) and RCS nozzles (`rcsKeepOut` = 0.12 m) left clear (`TileSettings.KeepOut`).
+- **Thickness in editor toolbar window**: "Apply to all heat shields" now sets thickness as well (single undo step; Ablator and mass update accordingly).
+- **Smoothed glow fade**: `glowFadeTime` = 3 s time-damped transitions with smoothstep ramp interpolation.
+- Cockpit shape support for `mk3Cockpit_Shuttle`.
+
+### Changed
+
+- **Removed "Span parts"**: decals cover their host part plus surface-attached flaps, intakes, and landing gear. Legacy saved value is loaded and ignored.
+- **Much subtler glow ramp** and `glowEmissivity` 0.95; tile renderers excluded from `Part.temperatureRenderer` resets.
+- **Default joint width 0 m** (existing saves keep their stored width).
+- **Removed White tiles** (`HexWhite`, `SquareWhite`); saved White decals load as Black.
+- `[assembly: KSPAssembly("AblatorDecals", 1, 4)]`, Version 1.4.0.
+
+### Geometry
+
+- Fixed Mk2 cargo bay tiling (stack planes on inward `top2`/`bottom2` nodes oriented outward from part center).
+- Cargo bay doors (`ModuleCargoBay` animated transforms) tiled in closed pose and move with the doors in flight.
+- Exact wrap-angle cut line on hull faces (snaps cleanly to sharp creases within ±20° such as Mk3 chines).
+- Clean cuts around keep-out boxes, intake openings, and zero-gap seam fronts.
+
+## 1.3.0 (2026-11-16)
+
+Following the 1.2.0 playtest. Verified offline.
+
+### Added
+
+- **One heat shield per part**: new default **Whole part** coverage (Max wrap angle default 100°, clean cuts at part seams). Width/height shown only under **Limit area** (pre-1.3 saves load as Limit area).
+- **Area already covered**: second decal on an occupied part highlights red with a status message; only two **Limit area** decals may share a part.
+- **Decal handle ring**: hovering or opening the PAW shows an orange hex ring at the attach point; open PAW highlights the whole decal.
+- Detailed gear and intake diagnostic logs.
+
+### Changed
+
+- Exact mesh colliders on tiles in the editor for accurate clicking (box colliders retained in flight), reliably re-enabled once cursor is empty.
+- Suppresses cascade rebuilds while dragging parts.
+- Slower, later yellow glow ramp and `glowHeatCapacity` = 30 kJ/m²K.
+- `[assembly: KSPAssembly("AblatorDecals", 1, 3)]`, Version 1.3.0.
+
+## 1.2.0 (2026-11-16)
+
+Following the 1.1.0 playtest. Verified offline.
+
+### Fixed
+
+- **Fixed 6631 `NullReferenceException`s in `Part.SetOpacity`** in the editor by immediately unparenting destroyed hosts and rebuilding part/highlighter renderer caches.
+- **Reentry artifacts**: destroyed the placeholder model on live parts instead of only hiding its renderer.
+
+### Added
+
+- **No decal on decal** (`attachRules = 0,1,0,0,1`); overlapping newer decals yield to older ones.
+- **Parts attach on tiles cleanly** without triggering decal rebuilds and with flight collision ignored.
+- **Landing gear** excluded from fuselage colliders (`gearMargin` = 0.3 m) while receiving its own retracted exterior tile shell that animates with doors/struts; parts sitting on tiles share thermal protection.
+- **Air intakes and small control surfaces** supported across covered parts.
+- **Cockpit shape** for Mk1 and Mk2 cockpits (`CockpitCover.cfg`).
+- Editor toolbar button window for bulk editing Pattern, Tile type, and Tile size (`tools/make-app-icon.ps1`).
+
+### Changed
+
+- Custom yellower glow ramp (`glowRamp`); removed any ReStock dependency.
+- `[assembly: KSPAssembly("AblatorDecals", 1, 2)]`, Version 1.2.0.
+
+## 1.1.0 (2026-11-15)
+
+Following the first 1.0 playtest. Verified offline.
+
+### Added
+
+- Parts attach on top of tiles without colliding in flight.
+- **Control surfaces**: movable flaps split into their own body and deflect with `ModuleControlSurface` in flight.
+- Wing/flap span support, **Tile type** (`Black`, `White`, `Plain ceramic`), **Unroll** ("Along the hull" vs "Seen from the front"), optional **B9PartSwitch** color swatches, and **Shuffle tiles**.
+
+### Changed
+
+- Reorganized PAW groups (**Tiles**, **Area**, **Fine tuning**), smaller default tile size (0.1 m), mitered crease edges (< 5 mm gap), straight cuts in unrolled mode, removed staggered squares from new choices, `[assembly: KSPAssembly("AblatorDecals", 1, 1)]`.
+
+## 1.0.0 (2026-11-13)
+
+Initial rewrite replacing prototype versions v1–v5. Verified offline.
+
+### Added
+
+- Rewritten planar rigid tile geometry (`TilePattern`, `TileBuilder`) with neighbor-clipped adaptive tiles, dark joint sheet, and beveled tops.
+- Hexagons (Starship), Squares, and Staggered Squares (Shuttle) patterns with ±90° rotation, straight or whole-tile borders, and cosmetic missing tiles (0–20%).
+- Position deduplication fixing runaway 180° wrap flooding.
+- Multi-part stack coverage, cell atlases (`HexBlack`, `SquareBlack`, `SquareWhite`) and plain `Ceramic` texture, non-blocking worker-thread editor builds, visual thermal glow (`TileGlow`), charring, flight hosts attached to target parts, EN/DE localization, custom `placeholder.mu` icon, area-based mass/cost, and diagnostic logging.
