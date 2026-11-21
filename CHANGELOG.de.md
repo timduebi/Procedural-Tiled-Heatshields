@@ -2,6 +2,12 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.7.3 (2026-11-21)
+
+- **Cockpits (Mk1 / Mk2 / Mk3) mit sauberen echten 3D-Kacheln:** Die frühere Cockpit-Randfüllung (die gekrümmte Randkacheln entfernte und flache schwarze Flecken sowie Löcher erzeugte) wurde durch exaktes Masken-Clipping direkt beim Setzen der Kacheln und ein zurückgesetztes dunkles Fugenbett (`AddMaskJointBed`) ersetzt. Nasenkappen (`CapShell`/`CurvedShell`) greifen nur noch an echt doppelt gekrümmten Nasenspitzen, sodass 1D-Kanten (Mk2-Chine) und Bauchflächen (Mk3) vollständig aus echten 3D-Kacheln bestehen. Asymmetrischen Ausschnitt am Mk3-Cockpit (`CockpitCover.cfg`) symmetrisch gemacht. Alle sechs vorgefertigten Cockpithüllen (`Hex` und `Square`) neu gebacken (~3× kleinere Dateien, 100 % Maskenabdeckung, 0 überstehende Kacheln).
+- **Lücken zwischen bekachelten Teilen behoben:** Nach innen gerichtete Stapelknoten von Fracht- und Serviceräumen (`top2`/`bottom2`, 20–100 mm innerhalb der Außenwand) werden nun an die äußere Stirnwand geschoben statt 20 mm Außenkacheln abzuschneiden (behebt 40-mm-Spalten zwischen gestapelten Cargo Bays). Flache Konen ziehen Schnittebenen nicht mehr hinter die Naht zurück, kleine Randstücke an Stapelnähten bleiben erhalten und Fasen direkt an Stapelnähten entfallen (bündiger Übergang ohne V-Fuge).
+- **Performance & Stabilität:** Standardwerte für `glowBinAngle` / `glowMaxBins` von `6°` / `48` auf `18°` / `12` (Overlays auf `24°` / `8` gedeckelt) angepasst → ~4–10× weniger Materialien und Draw-Calls je Decal. GC-Allokationen in `FixedUpdate` (50 Hz) entfernt, Frühausstieg im Vakuum und im gepackten Zustand ergänzt, Frontflächen-Summe auf Bin-Ebene umgestellt. `SurfaceIndex.CurvedShell` per Spatial-Hash von $O(V^2)$ auf $O(V)$ beschleunigt. Hintergrund-Build-Jobs im Editor abbrechbar gemacht, Spiegelungs-Normalen und Material-Leaks in `TileHost` behoben, Labels und Input-Locks in `DecalWindow` gecacht, „Auf alle anwenden“ überschreibt feste `tileSize`/`thickness` vorgefertigter Cockpits nicht mehr, und `AblatorDecals.version` (KSP-AVC) ergänzt.
+
 ## 1.7.2 (2026-11-21)
 
 - Cockpit-Feinschliff: über Kanten (Mk2-Chine) läuft ein Gitter weiter (exakt abgewickelt statt zweiter Flut), die Randfüllung reicht unter die geschnittenen Randkacheln (keine hellen Punkte, Streifen ~1 cm), Füllstücke ohne Bild dunkel; alle Cockpits neu gebacken. Schutzhaube des Docking-Ports bekommt die Randfüllung, die Spitze wird geschlossen. Vorschau: Unterseiten dunkel wie im Spiel.

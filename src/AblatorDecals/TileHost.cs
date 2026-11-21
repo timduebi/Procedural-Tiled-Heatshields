@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Object = UnityEngine.Object;
@@ -46,10 +45,18 @@ namespace AblatorDecals
         public Color[] GlowSet = new Color[0];   // colour last written to the bin material
 
         // host space -> decal space at build time (a flap host: decal space with the flap in neutral position)
-        private Quaternion toDecal = Quaternion.identity;
+        private Matrix4x4 hostToDecal = Matrix4x4.identity;
+        private int glowPropId;
+        private bool hasEmissiveTex;
 
         // World direction in the space of the decal data above, following the host as it moves (flap deflection, flex).
-        public Vector3 DecalDirection(Vector3 world) => Go != null ? toDecal * Go.transform.InverseTransformDirection(world) : Vector3.zero;
+        public Vector3 DecalDirection(Vector3 world)
+        {
+            if (Go == null) return Vector3.zero;
+            Vector3 local = Go.transform.InverseTransformDirection(world);
+            Vector3 d = hostToDecal.MultiplyVector(local);
+            return d.sqrMagnitude > 1e-12f ? d.normalized : Vector3.zero;
+        }
 
         public TileHost(PartModule owner, Part targetPart, Transform parent, int layer, string name)
         {
@@ -72,8 +79,7 @@ namespace AblatorDecals
             BinNormals = t.BinNormals;
             BinAreas = t.BinAreas;
             TileAreaVectors = t.TileAreaVectors;
-            Matrix4x4 hostToDecal = decalToHost.inverse;
-            toDecal = Quaternion.LookRotation(hostToDecal.GetColumn(2), hostToDecal.GetColumn(1));
+            hostToDecal = decalToHost.inverse;
 
             int n = t.Vertices.Length;
             var verts = new Vector3[n];
@@ -107,6 +113,9 @@ namespace AblatorDecals
             Materials[bins + 1] = new Material(back) { name = "AblativeDecalBack" };
             Renderer.sharedMaterials = Materials;
 
+            glowPropId = bins > 0 ? GlowProperty(Materials[0]) : 0;
+            hasEmissiveTex = bins > 0 && Materials[0].HasProperty(EmissiveID);
+
             GlowSet = new Color[bins];
             for (int i = 0; i < bins; i++) SetBinGlow(i, Dark);
             JointSet = Color.black;
@@ -137,15 +146,25 @@ namespace AblatorDecals
         // 1.5 (M1): the glow goes into _EmissiveColor (KSP/Emissive/*: _Emissive texture x _EmissiveColor, per tile a soft core
         // to rim gradient); a shader without it falls back to _TemperatureColor (flat per bin, as up to 1.4)
         public static readonly int EmissiveColorID = Shader.PropertyToID("_EmissiveColor"), EmissiveID = Shader.PropertyToID("_Emissive");
-        public bool HasGlow => BinCount > 0 && GlowProperty(Materials[0]) != 0;
+        public bool HasGlow => BinCount > 0 && glowPropId != 0;
         public static int GlowProperty(Material m) =>
             m.HasProperty(EmissiveColorID) ? EmissiveColorID : m.HasProperty(PhysicsGlobals.TemperaturePropertyID) ? PhysicsGlobals.TemperaturePropertyID : 0;
 
         // true while the renderer still holds our materials with our textures
-        public bool Intact(Texture tex, Texture glow) =>
-            Renderer != null && Renderer.sharedMaterials.SequenceEqual(Materials) &&
-            (tex == null || Materials.Take(BinCount).All(m => m.mainTexture == tex)) &&
-            (glow == null || Materials.Take(BinCount).All(m => !m.HasProperty(EmissiveID) || m.GetTexture(EmissiveID) == glow));
+        public bool Intact(Texture tex, Texture glow)
+        {
+            if (Renderer == null) return false;
+            Material[] now = Renderer.sharedMaterials;
+            if (now == null || now.Length != Materials.Length) return false;
+            for (int i = 0; i < now.Length; i++)
+                if (now[i] != Materials[i]) return false;
+            for (int i = 0; i < BinCount; i++)
+            {
+                if (tex != null && Materials[i].mainTexture != tex) return false;
+                if (glow != null && hasEmissiveTex && Materials[i].GetTexture(EmissiveID) != glow) return false;
+            }
+            return true;
+        }
 
         // what differs (for the log): first slot whose material is not ours, or the texture
         public string Difference(Texture tex)
@@ -162,7 +181,17 @@ namespace AblatorDecals
         public void Restore(Texture tex, Texture glow)
         {
             if (Renderer == null) return;
+            Material[] old = Renderer.sharedMaterials;
             Renderer.sharedMaterials = Materials;
+            if (old != null)
+            {
+                for (int i = 0; i < old.Length; i++)
+                {
+                    Material m = old[i];
+                    if (m != null && Array.IndexOf(Materials, m) < 0 && m.name != null && m.name.StartsWith("AblativeDecal") && m.name.Contains("(Instance)"))
+                        Object.Destroy(m);
+                }
+            }
             for (int i = 0; i < BinCount; i++)
             {
                 Materials[i].mainTexture = tex;
@@ -190,15 +219,15 @@ namespace AblatorDecals
         public void SetBinGlow(int bin, Color c)
         {
             if (bin < 0 || bin >= BinCount) return;
-            Material m = Materials[bin];
-            int id = GlowProperty(m);
-            if (id != 0) m.SetColor(id, c);
+            if (glowPropId != 0) Materials[bin].SetColor(glowPropId, c);
         }
 
         private void DestroyMaterials()
         {
             foreach (Material m in Materials) if (m != null) Object.Destroy(m);
             Materials = new Material[0];
+            glowPropId = 0;
+            hasEmissiveTex = false;
         }
 
         // KSP caches a part's renderers: the model caches, Part.HighlightRenderer (Part.SetOpacity calls SetPropertyBlock on

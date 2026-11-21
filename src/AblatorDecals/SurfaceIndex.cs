@@ -132,7 +132,6 @@ namespace AblatorDecals
         // A sphere of radius r gives pi radius^2 / r^2. Also rims bent tighter than that (vertex normals within turnRadius
         // turning beyond acos(maxTurnCos)). Vertices welded by position (1 mm); rim vertices of an open mesh
         // (small angle sum, normals all one way) don't count. accept(triangle corners) filters the result.
-        // ponytail: O(vertices^2), meant for single parts (cockpit cover); use the grid if it ever runs on whole crafts.
         public List<ShellTri> CurvedShell(float radius, float minDeficit, float turnRadius, float maxTurnCos, Func<Vector3, Vector3, Vector3, bool> accept)
         {
             var at = new Dictionary<long, int>();
@@ -155,21 +154,53 @@ namespace AblatorDecals
                 }
             }
             var deficit = new float[p.Count];
+            var norm = new Vector3[p.Count];
+            float cs = Math.Max(Math.Max(radius, turnRadius), 1e-3f);
+            var vgrid = new Dictionary<long, List<int>>(p.Count);
             for (int i = 0; i < p.Count; i++)
+            {
                 if (!(angle[i] < 4.5f && nsum[i].magnitude > 0.85f * angle[i])) deficit[i] = 2 * Mathf.PI - angle[i];
+                norm[i] = nsum[i].normalized;
+                long key = Key(Mathf.FloorToInt(p[i].x / cs), Mathf.FloorToInt(p[i].y / cs), Mathf.FloorToInt(p[i].z / cs));
+                if (!vgrid.TryGetValue(key, out List<int> bucket)) vgrid[key] = bucket = new List<int>(4);
+                bucket.Add(i);
+            }
             var curved = new bool[p.Count];
+            var turned = new bool[p.Count];
+            var gaussPts = new List<Vector3>();
             float r2 = radius * radius, t2 = turnRadius * turnRadius;
             for (int i = 0; i < p.Count; i++)
             {
                 float sum = 0;
-                Vector3 ni = nsum[i].normalized;
-                for (int j = 0; j < p.Count; j++)
+                Vector3 pi = p[i];
+                Vector3 ni = norm[i];
+                int cx = Mathf.FloorToInt(pi.x / cs), cy = Mathf.FloorToInt(pi.y / cs), cz = Mathf.FloorToInt(pi.z / cs);
+                for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                for (int dz = -1; dz <= 1; dz++)
                 {
-                    float d2 = (p[j] - p[i]).sqrMagnitude;
-                    if (d2 <= r2) sum += deficit[j];
-                    if (d2 <= t2 && Vector3.Dot(ni, nsum[j].normalized) < maxTurnCos) curved[i] = true;
+                    if (!vgrid.TryGetValue(Key(cx + dx, cy + dy, cz + dz), out List<int> bucket)) continue;
+                    for (int b = 0; b < bucket.Count; b++)
+                    {
+                        int j = bucket[b];
+                        float d2 = (p[j] - pi).sqrMagnitude;
+                        if (d2 <= r2) sum += deficit[j];
+                        if (d2 <= t2 && Vector3.Dot(ni, norm[j]) < maxTurnCos) turned[i] = true;
+                    }
                 }
-                curved[i] |= sum >= minDeficit;
+                if (sum >= minDeficit) { curved[i] = true; gaussPts.Add(pi); }
+            }
+            // Only let 1D normal-turn extend a true doubly-curved (Gaussian) tip, never grab long 1D creases/chines/belly edges.
+            if (gaussPts.Count > 0)
+            {
+                float near2 = 4 * r2;
+                for (int i = 0; i < p.Count; i++)
+                {
+                    if (curved[i] || !turned[i]) continue;
+                    Vector3 pi = p[i];
+                    for (int g = 0; g < gaussPts.Count; g++)
+                        if ((gaussPts[g] - pi).sqrMagnitude <= near2) { curved[i] = true; break; }
+                }
             }
             var list = new List<ShellTri>();
             var edges = new Dictionary<long, int>();
@@ -180,7 +211,7 @@ namespace AblatorDecals
                 if (!curved[i0] && !curved[i1] && !curved[i2]) continue;
                 if (!accept(p[i0], p[i1], p[i2])) continue;
                 list.Add(new ShellTri { Index = t, Owner = owners != null ? owners[t] : 0, A = p[i0], B = p[i1], C = p[i2],
-                    NA = nsum[i0].normalized, NB = nsum[i1].normalized, NC = nsum[i2].normalized });
+                    NA = norm[i0], NB = norm[i1], NC = norm[i2] });
                 foreach (long e in new[] { EdgeKey(i0, i1), EdgeKey(i1, i2), EdgeKey(i2, i0) })
                     edges[e] = edges.TryGetValue(e, out int n) ? n + 1 : 1;
             }

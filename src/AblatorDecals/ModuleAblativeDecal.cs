@@ -193,8 +193,8 @@ namespace AblatorDecals
         // in the PAW), which on a normal reentry peaks around 700-1300 K: glow from 550 K, medium 800 K, peak 1300 K (1.5 test)
         [KSPField] public string glowRamp = "550 1 0.5 0.14 0; 800 1 0.5 0.14 0.55; 1300 1 1 1 1.2; 1700 1 1 1 1.65; 2000 1 1 1 2.8";
         // glow bins: tiles whose normals lie within this angle share one temperature and colour; fine bins = no visible steps
-        [KSPField] public float glowBinAngle = 6f;
-        [KSPField] public int glowMaxBins = 48;
+        [KSPField] public float glowBinAngle = 18f;
+        [KSPField] public int glowMaxBins = 12;
         [KSPField] public Vector3 glowFlatColor = new Vector3(1f, 0.75f, 0.45f); // emission texture of patterns without one (plain)
         [KSPField] public float massPerArea = 0.0015f;  // t/m2
         [KSPField] public float costPerArea = 20f;
@@ -224,6 +224,7 @@ namespace AblatorDecals
         // Everything a worker needs; plain data only (no Unity objects).
         private class BuildJob
         {
+            public volatile bool Cancelled;
             public TileSettings Settings;
             public Vector3 N, U, V;
             public SurfaceInput Surface;   // null: flat preview
@@ -305,7 +306,8 @@ namespace AblatorDecals
 
         private SurfaceInput surfaceCache;
         private readonly object gate = new object();
-        private BuildJob finished;
+        private BuildJob finished, activeJob;
+        private double[] qBuf = new double[0], covBuf = new double[0];
         private bool running, dirty, destroyed;
         private bool detached;                    // editor: set on PartDetached, parent may not be null yet
         private Matrix4x4[] lastPoses = new Matrix4x4[0];
@@ -450,6 +452,7 @@ namespace AblatorDecals
         private void OnDestroy()
         {
             destroyed = true;
+            if (activeJob != null) activeJob.Cancelled = true;
             if (HighLogic.LoadedSceneIsEditor && targets.Length > 0) NotifyYounger(new HashSet<Part>(targets));
             GameEvents.onEditorPartEvent.Remove(OnEditorPartEvent);
             GameEvents.onVariantApplied.Remove(OnVariantApplied);
@@ -627,12 +630,12 @@ namespace AblatorDecals
             foreach (TileHost h in hosts)
             {
                 if (!h.Alive || h.Intact(currentTexture, currentGlow)) continue;
-                if (!guardWarned)
+                if (h.TargetPart != null && !guardWarned)
                 {
                     // KSP itself copies them: EditorLogic.highlightSelected (renderer.material, slot 0) and MaterialColorUpdater
                     // (thermal overlay, renderer.materials) instance the materials of every renderer under a part's model
                     guardWarned = true;
-                    Debug.LogWarning($"[AblatorDecals] {PartName}: tile materials replaced on {(h.TargetPart != null && h.TargetPart.partInfo != null ? h.TargetPart.partInfo.name : "?")} ({h.Difference(currentTexture)}), restoring");
+                    Debug.LogWarning($"[AblatorDecals] {PartName}: tile materials replaced on {(h.TargetPart.partInfo != null ? h.TargetPart.partInfo.name : "?")} ({h.Difference(currentTexture)}), restoring");
                 }
                 h.Restore(currentTexture, currentGlow);
             }
@@ -869,10 +872,26 @@ namespace AblatorDecals
                         if (node.nodeType != AttachNode.NodeType.Stack || node.attachedPart == null || parts.Contains(node.attachedPart)) continue;
                         Vector3 dir = node.orientation.normalized;
                         if (dir.sqrMagnitude < 0.5f) continue;
-                        // G5: Mk2/Mk3 cargo bays are stacked by inward nodes (top2/bottom2 point into the bay): the plane must face
-                        // away from the part's middle, or it cuts the whole bay away (TileBuilder turns such planes round as well)
-                        if (Vector3.Dot(dir, node.position) < 0) dir = -dir;
-                        cuts.Add(ToDecal(new Vector4(dir.x, dir.y, dir.z, -Vector3.Dot(dir, node.position + 0.0005f * dir)), poses[i]));
+                        // G5: Mk2/Mk3 cargo bays & service bays have inward payload nodes (top2/bottom2) recessed 20-100 mm
+                        // inside the outer bulkhead. Flip inward nodes outward AND push the cut plane to the outermost stack
+                        // node in that direction so stacked cargo bays never get a 40 mm seam gap.
+                        Vector3 pos = node.position;
+                        if (Vector3.Dot(dir, pos) < 0)
+                        {
+                            dir = -dir;
+                            float outer = Vector3.Dot(dir, pos);
+                            foreach (AttachNode other in parts[i].attachNodes)
+                            {
+                                if (other.nodeType != AttachNode.NodeType.Stack) continue;
+                                Vector3 od = other.orientation.normalized;
+                                if (Vector3.Dot(od, dir) > 0.9f)
+                                {
+                                    float proj = Vector3.Dot(dir, other.position);
+                                    if (proj > outer) { outer = proj; pos = other.position; }
+                                }
+                            }
+                        }
+                        cuts.Add(ToDecal(new Vector4(dir.x, dir.y, dir.z, -Vector3.Dot(dir, pos + 0.0005f * dir)), poses[i]));
                     }
                 if (cuts.Count > 0) settings.CutPlanes = cuts.ToArray();
             }
@@ -1207,6 +1226,7 @@ namespace AblatorDecals
         {
             try
             {
+                if (job.Cancelled) return;
                 Stopwatch watch = Stopwatch.StartNew();
                 TileResult r = null;
                 if (job.Blocked)
@@ -1222,6 +1242,7 @@ namespace AblatorDecals
                 else if (job.Surface != null)
                 {
                     var index = new SurfaceIndex(job.Surface.Pos, job.Surface.Tri, Vector3.zero, job.Reach, job.Cell, job.Smooth, job.Surface.Owner);
+                    if (job.Cancelled) return;
                     r = TileBuilder.Build(index, job.Settings, Vector3.zero, job.N, job.U, job.V);
                     job.OnSurface = r.OnSurface && r.TileCount > 0;
                 }
@@ -1234,6 +1255,7 @@ namespace AblatorDecals
                         TileResult main = new TileResult { Parts = r.Parts };
                         for (int i = 0; i < job.Surface.Overlays.Length && i < job.OverlaySettings.Length; i++)
                         {
+                            if (job.Cancelled) return;
                             OverlayInput oi = job.Surface.Overlays[i];
                             var foot = new List<Vector3>();
                             for (int k = 0; k < oi.Owner.Length; k++)
@@ -1250,9 +1272,12 @@ namespace AblatorDecals
                     job.Settings.Height = job.Height = Mathf.Min(job.Height, 4f);
                 }
                 if (!job.OnSurface)
+                {
+                    if (job.Cancelled) return;
                     r = job.Flight
                         ? new TileResult { Parts = new PartTiles[0], Colliders = new TileBuilder.Box[0] } // flight: no stand-in
                         : TileBuilder.Build(Flat(job), job.Settings, Vector3.zero, job.N, job.U, job.V);
+                }
                 job.Result = r;
                 job.Ms = watch.ElapsedMilliseconds;
             }
@@ -1281,6 +1306,7 @@ namespace AblatorDecals
             running = true;
             dirty = false;
             BuildJob job = MakeJob();
+            activeJob = job;
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 Work(job);
@@ -1300,7 +1326,7 @@ namespace AblatorDecals
         private void Receive(BuildJob job)
         {
             running = false;
-            if (destroyed) return;
+            if (destroyed || job.Cancelled) return;
             Apply(job);                 // even if stale: the user sees progress while dragging
             if (dirty) RequestBuild();  // then build the newest state once
         }
@@ -1540,11 +1566,20 @@ namespace AblatorDecals
             if (anchor != null) anchor.GetComponent<Collider>().enabled = on;
         }
 
+        private static int heldCheckFrame = -1;
+        private static bool heldNonDecalCached;
+
         // editor: a part without a decal module hangs on the mouse (a held decal must still hit other decals' tiles: blocked, red)
         private static bool NonDecalHeld()
         {
-            Part sel = EditorLogic.SelectedPart;
-            return sel != null && sel.FindModuleImplementing<ModuleAblativeDecal>() == null;
+            int frame = Time.frameCount;
+            if (frame != heldCheckFrame)
+            {
+                heldCheckFrame = frame;
+                Part sel = EditorLogic.SelectedPart;
+                heldNonDecalCached = sel != null && sel.FindModuleImplementing<ModuleAblativeDecal>() == null;
+            }
+            return heldNonDecalCached;
         }
 
         // a part hangs on the mouse that is neither this decal nor carries it
@@ -2431,11 +2466,19 @@ namespace AblatorDecals
             if (!HighLogic.LoadedSceneIsFlight) return;
             if (ignoreFrames > 0 && --ignoreFrames == 0) IgnoreTileCollisions();
             if (ablator == null || vessel == null || part.parent == null) return;
+            if (vessel.packed) return;
 
-            if (!flightStarted && !vessel.packed)
+            if (!flightStarted)
             {
                 flightStarted = true;
                 diagnoseAt = Time.time + 3f;
+            }
+
+            if (vessel.atmDensity <= 0 && !heating && glowShownMax < 0.002f && absorbed <= 0)
+            {
+                facing = 0;
+                absorbed = 0;
+                return;
             }
 
             // tile area seen by the oncoming flow, per covered part: sum of area * max(0, n.v)
@@ -2450,10 +2493,21 @@ namespace AblatorDecals
                 {
                     if (host.TargetPart != targets[i] || !host.Alive) continue;
                     Vector3 vLocal = host.DecalDirection(vWorld);
-                    foreach (Vector3 a in host.TileAreaVectors)
+                    if (host.BinCount > 0)
                     {
-                        float d = Vector3.Dot(a, vLocal);
-                        if (d > 0) sum += d;
+                        for (int b = 0; b < host.BinCount; b++)
+                        {
+                            float d = Vector3.Dot(host.BinNormals[b], vLocal);
+                            if (d > 0) sum += d * host.BinAreas[b];
+                        }
+                    }
+                    else
+                    {
+                        foreach (Vector3 a in host.TileAreaVectors)
+                        {
+                            float d = Vector3.Dot(a, vLocal);
+                            if (d > 0) sum += d;
+                        }
                     }
                 }
                 frontal[i] = sum;
@@ -2464,13 +2518,15 @@ namespace AblatorDecals
             // per covered part: share of its convective heating this decal takes (all decals on a part capped at 100 %);
             // parts glued on inside the tiles (gear, decouplers) get the share of the part they sit on (q index targets.Length + k)
             int nt = targets.Length;
-            var q = new double[nt + onTiles.Count];
-            var covs = new double[nt];
+            int qLen = nt + onTiles.Count;
+            if (qBuf.Length < qLen) qBuf = new double[qLen];
+            if (covBuf.Length < nt) covBuf = new double[nt];
+            double[] q = qBuf, covs = covBuf;
             double qWanted = 0, qOffered = 0, hottest = 0, hottestMax = 1;
             for (int i = 0; i < nt; i++)
             {
                 Part p = targets[i];
-                if (p == null || p.vessel != vessel) continue;
+                if (p == null || p.vessel != vessel) { q[i] = covs[i] = 0; continue; }
                 double raw = HasAblator ? ShieldMath.RawCoverage(frontal[i], 1, p.exposedArea) : 0;
                 double rawSum = 0;
                 foreach (ModuleAblativeDecal d in VesselDecals()) rawSum += d == this ? raw : ShieldMath.RawCoverage(d.FrontalOn(p), 1, p.exposedArea);
@@ -2485,7 +2541,7 @@ namespace AblatorDecals
             {
                 Part e = onTiles[k];
                 int i = e != null && e.vessel == vessel ? Array.IndexOf(targets, e.parent) : -1;
-                if (i < 0) continue;
+                if (i < 0) { q[nt + k] = 0; continue; }
                 double qIn = e.skinTemperature > ablationTempThresh ? Math.Max(0, e.thermalConvectionFlux) : 0;
                 q[nt + k] = covs[i] * efficiency * qIn;
                 qWanted += q[nt + k];
@@ -2497,7 +2553,7 @@ namespace AblatorDecals
             double scale = qWanted > 0 ? absorbed / qWanted : 0;
             if (absorbed > 0)
             {
-                for (int i = 0; i < q.Length; i++)
+                for (int i = 0; i < qLen; i++)
                     if (q[i] > 0) (i < nt ? targets[i] : onTiles[i - nt]).AddExposedThermalFlux(-q[i] * scale);
                 ablator.amount -= used;
                 energyAbsorbed += absorbed * TimeWarp.fixedDeltaTime / 1000;
@@ -2577,6 +2633,7 @@ namespace AblatorDecals
                 double fade = glowFadeTime > 0 ? 1 - Math.Exp(-dt / glowFadeTime) : 1;
                 field.Shown += (temperature - field.Shown) * fade;
             }
+            if (field.Surface == null) return;
             hottestTile = field.Surface.T;
             glowShownMax = 0;
             bool checkKspGlow = Time.time >= nextKspGlowCheck;
@@ -2653,10 +2710,13 @@ namespace AblatorDecals
         // our fields when the craft loads); the change arrives through OnLoad like a click on the B9 switcher.
         internal void ApplyGlobal(string newPattern, string newFinish, float newSize, float newThickness)
         {
-            tileSize = Mathf.Clamp(newSize, 0.03f, 0.5f);
-            thickness = Mathf.Clamp(newThickness, 0.005f, 0.3f);
             if (!SwitchB9("tilePattern", newPattern)) pattern = newPattern;
             if (!SwitchB9("tileFinish", newFinish) && finishModule != null) finishModule.finish = newFinish;
+            if (!premadeShown && (CoverOfParent() == null || PremadeCover(part.parent, Shape) == null))
+            {
+                tileSize = Mathf.Clamp(newSize, 0.03f, 0.5f);
+                thickness = Mathf.Clamp(newThickness, 0.005f, 0.3f);
+            }
             if (decalRoot != null) SyncSettings();
             rebuildPending = true;
         }

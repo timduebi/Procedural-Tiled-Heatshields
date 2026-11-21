@@ -58,7 +58,7 @@ static class Program
             {
                 string tex = Path.Combine(Directory.GetCurrentDirectory(), "GameData", "AblatorDecals", "Textures", shape + "Black.png");
                 var a = new List<string> { "--stack", args[1], args[2], "0", Path.Combine(args[3], "bake-" + shape), $"shape={shape}", "tileSize=0.1", "tileGap=0",
-                    "thickness=0.025", $"texture={tex}", "cells=4x4", "side=0,0,1", "whole=1", "views=none", $"bake={Path.Combine(args[3], args[2] + "_" + shape + ".bin")}" };
+                    "thickness=0.025", "binAngle=18", "maxBins=12", $"texture={tex}", "cells=4x4", "side=0,0,1", "whole=1", "views=none", $"bake={Path.Combine(args[3], args[2] + "_" + shape + ".bin")}" };
                 a.AddRange(args.Skip(4));
                 partConfigs.Clear();
                 maskCov = -1;
@@ -155,6 +155,8 @@ static class Program
                 SurfaceOffset = f("0.003", "surfaceOffset"),
                 CornerBendDeg = f("35", "cornerBendAngle"), FaceBendDeg = f("60", "faceBendAngle"), CurvatureFactor = f("1", "curvatureFactor"),
                 TextureScale = f("2", "textureScale|textureRepeat"),
+                BinAngleDeg = f("18", "binAngle"),
+                MaxBins = (int)f("12", "maxBins"),
                 Seed = (int)f(index.ToString(), "seed"),
             };
 
@@ -274,9 +276,27 @@ static class Program
                         string ndv = tc.Get("node_stack_" + f2[0]);
                         if (otherId.StartsWith("Null") || ndv == null || targets.Any(t => t.Id == otherId)) continue;
                         float[] nd = ndv.Split(',').Select(Flt).ToArray();
-                        if (nd[3] * nd[0] + nd[4] * nd[1] + nd[5] * nd[2] < 0 && !overrides.ContainsKey("rawNodes")) { nd[3] = -nd[3]; nd[4] = -nd[4]; nd[5] = -nd[5]; } // as the module (G5)
-                        Vector3 nd3 = decal.Xform.InverseApplyDir(tp.Xform.ApplyDir(new Vector3(nd[3], nd[4], nd[5]))).normalized;
-                        Vector3 np3 = decal.Xform.InverseApply(tp.Xform.Apply(new Vector3(nd[0], nd[1], nd[2]) * rs)) + nd3 * 0.0005f;
+                        Vector3 nPos = new Vector3(nd[0], nd[1], nd[2]);
+                        Vector3 nDir = new Vector3(nd[3], nd[4], nd[5]).normalized;
+                        if (Vector3.Dot(nDir, nPos) < 0 && !overrides.ContainsKey("rawNodes"))
+                        {
+                            nDir = -nDir;
+                            float outer = Vector3.Dot(nDir, nPos);
+                            foreach (var kv in tc.Values.Where(v => v.Key.StartsWith("node_stack_")))
+                            {
+                                float[] on = kv.Value.Split(',').Select(Flt).ToArray();
+                                if (on.Length < 6) continue;
+                                Vector3 od = new Vector3(on[3], on[4], on[5]).normalized;
+                                if (Vector3.Dot(od, nDir) > 0.9f)
+                                {
+                                    Vector3 op = new Vector3(on[0], on[1], on[2]);
+                                    float proj = Vector3.Dot(nDir, op);
+                                    if (proj > outer) { outer = proj; nPos = op; }
+                                }
+                            }
+                        }
+                        Vector3 nd3 = decal.Xform.InverseApplyDir(tp.Xform.ApplyDir(nDir)).normalized;
+                        Vector3 np3 = decal.Xform.InverseApply(tp.Xform.Apply(nPos * rs)) + nd3 * 0.0005f;
                         stackCuts.Add(new Vector4(nd3.x, nd3.y, nd3.z, -Vector3.Dot(nd3, np3)));
                     }
                 }

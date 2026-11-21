@@ -21,11 +21,19 @@ namespace AblatorDecals
         private float tileSize = 0.1f;
         private float thickness = 0.025f;
         private string[] patternNames, finishNames;
+        private string titleLabel, patternLabel, finishLabel, tileSizeLabel, thicknessLabel, applyAllLabel;
+        private bool inputLocked;
 
         private void Start()
         {
             patternNames = Patterns.Select(p => Localizer.Format(L + "pattern_" + p.ToLowerInvariant())).ToArray();
             finishNames = Finishes.Select(f => Localizer.Format(L + "finish_" + f.ToLowerInvariant())).ToArray();
+            titleLabel = Localizer.Format(L + "app_title");
+            patternLabel = Localizer.Format(L + "pattern");
+            finishLabel = Localizer.Format(L + "finish");
+            tileSizeLabel = Localizer.Format(L + "tileSize");
+            thicknessLabel = Localizer.Format(L + "thickness");
+            applyAllLabel = Localizer.Format(L + "app_applyAll");
             GameEvents.onGUIApplicationLauncherReady.Add(AddButton);
             if (ApplicationLauncher.Ready) AddButton();
         }
@@ -41,7 +49,11 @@ namespace AblatorDecals
         private void OnDestroy()
         {
             GameEvents.onGUIApplicationLauncherReady.Remove(AddButton);
-            InputLockManager.RemoveControlLock(Lock);
+            if (inputLocked)
+            {
+                InputLockManager.RemoveControlLock(Lock);
+                inputLocked = false;
+            }
             if (button != null && ApplicationLauncher.Instance != null) ApplicationLauncher.Instance.RemoveModApplication(button);
         }
 
@@ -60,7 +72,11 @@ namespace AblatorDecals
         private void Close()
         {
             show = false;
-            InputLockManager.RemoveControlLock(Lock);
+            if (inputLocked)
+            {
+                InputLockManager.RemoveControlLock(Lock);
+                inputLocked = false;
+            }
         }
 
         private static System.Collections.Generic.IEnumerable<ModuleAblativeDecal> Decals() =>
@@ -71,24 +87,29 @@ namespace AblatorDecals
         private void OnGUI()
         {
             if (!show) return;
-            rect = GUILayout.Window(GetInstanceID(), rect, Draw, Localizer.Format(L + "app_title"));
+            rect = GUILayout.Window(GetInstanceID(), rect, Draw, titleLabel);
             // clicks on the window must not pick parts behind it
-            if (rect.Contains(Event.current.mousePosition)) InputLockManager.SetControlLock(ControlTypes.EDITOR_LOCK, Lock);
-            else InputLockManager.RemoveControlLock(Lock);
+            bool wantLock = rect.Contains(Event.current.mousePosition);
+            if (wantLock != inputLocked)
+            {
+                if (wantLock) InputLockManager.SetControlLock(ControlTypes.EDITOR_LOCK, Lock);
+                else InputLockManager.RemoveControlLock(Lock);
+                inputLocked = wantLock;
+            }
         }
 
         private void Draw(int id)
         {
-            GUILayout.Label(Localizer.Format(L + "pattern"));
+            GUILayout.Label(patternLabel);
             pattern = GUILayout.Toolbar(pattern, patternNames);
-            GUILayout.Label(Localizer.Format(L + "finish"));
+            GUILayout.Label(finishLabel);
             finish = GUILayout.Toolbar(finish, finishNames);
-            GUILayout.Label($"{Localizer.Format(L + "tileSize")}: {tileSize:F3} m");
+            GUILayout.Label($"{tileSizeLabel}: {tileSize:F3} m");
             tileSize = Mathf.Round(GUILayout.HorizontalSlider(tileSize, 0.03f, 0.5f) * 200f) / 200f; // 5 mm steps
-            GUILayout.Label($"{Localizer.Format(L + "thickness")}: {thickness:F3} m");
+            GUILayout.Label($"{thicknessLabel}: {thickness:F3} m");
             thickness = Mathf.Round(GUILayout.HorizontalSlider(thickness, 0.005f, 0.3f) * 1000f) / 1000f; // 1 mm steps
             GUILayout.Space(6);
-            if (GUILayout.Button(Localizer.Format(L + "app_applyAll"))) ApplyAll();
+            if (GUILayout.Button(applyAllLabel)) ApplyAll();
             GUI.DragWindow();
         }
 

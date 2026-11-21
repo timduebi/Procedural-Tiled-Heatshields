@@ -4,7 +4,7 @@ Language: **English** | [Deutsch](README.de.md)
 
 AblatorDecals is a mod for Kerbal Space Program 1.12.5. The **Ablative Heat Tiles** part (`ablativeDecal`) attaches to the surface of a part like a sticker and places thin 3D thermal protection tiles directly onto its hull. Surface-attached landing gear, air intakes, and control surfaces on that part can receive their own tile shells, and tiles on moving parts animate with them. Patterns mimic Starship (hexagons) or Space Shuttle (squares). Thermally, the decal acts as an ablative heat shield: during reentry it absorbs convection heat from the covered parts and consumes Ablator, all while remaining a single part.
 
-Version 1.7.2 has been verified offline with the full self-test suite and the preview renderer against KSP part models; final in-game verification is pending. See [CHANGELOG.md](CHANGELOG.md) for version history and [CLAUDE-HANDOFF.md](CLAUDE-HANDOFF.md) for development handoff notes.
+Version 1.7.3 has been verified offline with the full self-test suite and the preview renderer against KSP part models; final in-game verification is pending. See [CHANGELOG.md](CHANGELOG.md) for version history and [CLAUDE-HANDOFF.md](CLAUDE-HANDOFF.md) for development handoff notes.
 
 ## Installation
 
@@ -161,7 +161,7 @@ In flight, the decal PAW displays:
 - Protection engages once the part's skin temperature exceeds `ablationTempThresh` (default 500 K), removing that fraction of `thermalConvectionFlux` (scaled by `efficiency`). Solar and planetary radiation are untouched.
 - Absorbed energy consumes Ablator from the decal's shared pool. With default values, 1 unit absorbs 2400 kJ (`pyrolysisLossFactor × specific heat × density`). Once depleted, protection stops; if partially depleted during a step, all covered parts receive the same fraction.
 - Ablator capacity is computed in the editor from `coveredArea × thickness × unitsPerCubicMeter` and is never reset in flight.
-- **Glow** is purely visual. Tiles are grouped by normal direction (`glowBinAngle` = 6° bins) and share a vessel/decal-averaged skin temperature and convection coefficient so glow never steps across part seams. Temperature integrates over time (`glowHeatCapacity`, `glowEmissivity`, `glowConduction`) and fades smoothly (`glowFadeTime` = 3 s). Using `KSP/Emissive/Specular`, per-tile emission atlases (`HexGlow`, `SquareGlow`, `HexCeramicGlow`, `SquareCeramicGlow`, plus glowing joints via `KSP/Emissive/Diffuse`) are tinted by `_EmissiveColor` along `glowRamp` (no glow below 550 K, orange at 800 K, white-yellow core at 1300 K+, and local airflow weighting via `TileGlow.LocalWeight`). Without the emissive shader, it falls back to `_TemperatureColor`. KSP's own part glow (`MaterialPropertyBlock`) is kept off tile renderers.
+- **Glow** is purely visual. Tiles are grouped by normal direction (`glowBinAngle` = 18° bins, `glowMaxBins` = 12) and share a vessel/decal-averaged skin temperature and convection coefficient so glow never steps across part seams. Temperature integrates over time (`glowHeatCapacity`, `glowEmissivity`, `glowConduction`) and fades smoothly (`glowFadeTime` = 3 s). Using `KSP/Emissive/Specular`, per-tile emission atlases (`HexGlow`, `SquareGlow`, `HexCeramicGlow`, `SquareCeramicGlow`, plus glowing joints via `KSP/Emissive/Diffuse`) are tinted by `_EmissiveColor` along `glowRamp` (no glow below 550 K, orange at 800 K, white-yellow core at 1300 K+, and local airflow weighting via `TileGlow.LocalWeight`). Without the emissive shader, it falls back to `_TemperatureColor`. KSP's own part glow (`MaterialPropertyBlock`) is kept off tile renderers.
 - **Charring** shifts tile color toward `charColor` as Ablator is consumed.
 - If the parent part is destroyed, the decal is destroyed with it. If another covered part (such as a flap or intake) separates or is destroyed, the tile mesh rebuilds without it.
 
@@ -224,8 +224,8 @@ These fields belong to `MODULE { name = ModuleAblativeDecal }` (not shown in the
 | `glowHeatCapacity` | `30` | Thermal inertia of tile surface in kJ/m²K (30 gives ~20–40 s lag on reentry). |
 | `glowConduction` | `0.02` | Thermal conduction to hull in kW/m²K. |
 | `glowRamp` | `550 1 0.5 0.14 0; 800 1 0.5 0.14 0.55; 1300 1 1 1 1.2; ...` | Temperature-to-glow stops `K r g b strength` with smoothstep interpolation; multiplied into `_EmissiveColor` × emissive texture. |
-| `glowBinAngle` | `6` | Angular bin size (deg) for grouping tile normals for glow. |
-| `glowMaxBins` | `48` | Maximum glow bins per tile mesh. |
+| `glowBinAngle` | `18` | Angular bin size (deg) for grouping tile normals for glow. |
+| `glowMaxBins` | `12` | Maximum glow bins per tile mesh. |
 | `glowFlatColor` | `1, 0.75, 0.45` | Fallback emissive tint for textures without an `emissive` atlas. |
 | `glowFadeTime` | `3` | Time constant (s) for smoothing glow color changes (`0` = instant). |
 | `rcsKeepOut` | `0.12` | Half-extent (m) of keep-out cube around RCS nozzles on cockpits with `keepRcs = true`. |

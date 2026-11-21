@@ -304,6 +304,7 @@ namespace AblatorDecals
                 for (int i = 0; i < cuts.Length; i++)
                     if (Vector3.Dot(new Vector3(cuts[i].x, cuts[i].y, cuts[i].z), h0.P) + cuts[i].w > 0) cuts[i] = -cuts[i];
             }
+            if (S.Skin) return RunSkin(result, outlines);
 
             startBody = h0.Owner;
             List<SurfaceIndex.ShellTri> shell = CapShell();
@@ -333,7 +334,9 @@ namespace AblatorDecals
             Strips();
             Twins();
             AddCap(shell);
-            if (S.FillHull && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0)) Fill();
+            // Cockpit masks (HasClip) use real 3D tiles clipped cleanly to the mask in Drop/RegionHalves plus a recessed
+            // dark joint bed (AddMaskJointBed in Emit), instead of 90%-height flat Fill() blotches that fight with 3D tiles.
+            if (!HasClip && S.FillHull && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0)) Fill();
             Emit(result, outlines);
             result.HitTileLimit = hitLimit;
             result.Colliders = Colliders();
@@ -790,8 +793,8 @@ namespace AblatorDecals
             MaxWrapDeg = 180, StraightBorder = false, TileLoss = m.TileLoss, SurfaceOffset = m.SurfaceOffset, BevelWidth = m.BevelWidth,
             BevelDepth = m.BevelDepth, CornerBendDeg = m.CornerBendDeg, FaceBendDeg = m.FaceBendDeg, CurvatureFactor = m.CurvatureFactor,
             UvMode = m.UvMode, AtlasCols = m.AtlasCols, AtlasRows = m.AtlasRows, AtlasRandomRotation = m.AtlasRandomRotation,
-            TextureScale = m.TextureScale, TextureAspect = m.TextureAspect, MaxTiles = m.MaxTiles, MaxBins = m.MaxBins,
-            BinAngleDeg = m.BinAngleDeg, ColliderPatchSize = m.ColliderPatchSize, MaxColliders = m.MaxColliders, Seed = m.Seed,
+            TextureScale = m.TextureScale, TextureAspect = m.TextureAspect, MaxTiles = m.MaxTiles, MaxBins = Math.Min(m.MaxBins, 8),
+            BinAngleDeg = Math.Max(m.BinAngleDeg, 24f), ColliderPatchSize = m.ColliderPatchSize, MaxColliders = m.MaxColliders, Seed = m.Seed,
             Unrolled = true, Overlay = true
         };
 
@@ -829,6 +832,21 @@ namespace AblatorDecals
                 vn[id] += normal;
                 return id;
             }
+            // Exact clip classification for skin polygons (model has ~1k tris, so exact RegionDist is < 2 ms and avoids grid clamping edge cases)
+            bool ExactInClip(Vector3 p)
+            {
+                if (cuts != null)
+                    foreach (Vector4 c in cuts)
+                        if (c.x * p.x + c.y * p.y + c.z * p.z + c.w > 1e-4f) return false;
+                if (!HasClip) return true;
+                if (S.ClipPlanes != null)
+                    foreach (Vector4 c in S.ClipPlanes)
+                        if (c.x * p.x + c.y * p.y + c.z * p.z + c.w <= 1e-4f) return true;
+                if (S.Regions != null)
+                    foreach (CoverRegion r in S.Regions)
+                        if (RegionDist(r, p, out _) <= 1e-4f) return true;
+                return false;
+            }
             for (int k = 0; k < surface.TriangleSlots; k++)
             {
                 if (!wrapIn[k] || !surface.Triangle(k, out Vector3 a, out Vector3 b, out Vector3 c, out Vector3 n, out int owner)) continue;
@@ -836,15 +854,15 @@ namespace AblatorDecals
                 if (!S.Overlay && Vector3.Dot(n, S.TankAxis) < -0.999f) continue;
                 if (!S.Overlay && !HasClip && Vector3.Dot(n, S.TankAxis) > 0.999f) continue;
                 if (S.Overlay && !S.GearSkin && Enclosed((a+b+c)/3, n)) continue;
-                // 1.6.2 hull skins (Mk2 parts) skip faces looking into the part itself (the docking port's inner tube)
-                if (!S.Overlay && (S.Regions == null || S.Regions.Length == 0) &&
+                // Hull skins skip faces looking into the part itself (e.g. docking port tunnel, internal cockpit faces)
+                if (!S.Overlay &&
                     surface.Raycast((a+b+c)/3 + n * 0.01f, n, 0.5f, -1.01f, out SurfaceHit inner, false) && !Obstacle(inner.Owner)) continue;
                 foreach (var piece in SkinPolygons(a, b, c))
                 {
                     Vector3 mid = Vector3.zero;
                     foreach (Vector3 p in piece) mid += p;
                     mid /= piece.Count;
-                    if (!InClip(mid, 0) || InKeepOut(mid) || (S.LimitedTank && !Inside(mid, 0))) continue;
+                    if (!ExactInClip(mid) || InKeepOut(mid) || (S.LimitedTank && !Inside(mid, 0))) continue;
                     for (int j = 1; j + 1 < piece.Count; j++)
                     {
                         Vector3 an = Vector3.Cross(piece[j]-piece[0], piece[j+1]-piece[0]);
@@ -866,7 +884,25 @@ namespace AblatorDecals
                 }
             float lift = S.SurfaceOffset + S.Thickness;
             var top = new Vector3[vp.Count];
-            for (int i = 0; i < vp.Count; i++) { vn[i] = vn[i].sqrMagnitude > 1e-20f ? vn[i].normalized : Vector3.up; top[i] = vp[i] + vn[i] * lift; }
+            for (int i = 0; i < vp.Count; i++)
+            {
+                vn[i] = vn[i].sqrMagnitude > 1e-20f ? vn[i].normalized : Vector3.up;
+                Vector3 nLift = vn[i];
+                // Keep vertices on a stack cut plane flush with that plane so no gap opens at the part seam
+                if (!S.Overlay && cuts != null)
+                {
+                    foreach (Vector4 cp in cuts)
+                    {
+                        var cn = new Vector3(cp.x, cp.y, cp.z);
+                        if (Mathf.Abs(Vector3.Dot(cn, vp[i]) + cp.w) < 0.005f)
+                        {
+                            Vector3 proj = nLift - cn * Vector3.Dot(nLift, cn);
+                            if (proj.sqrMagnitude > 1e-6f) nLift = proj.normalized;
+                        }
+                    }
+                }
+                top[i] = vp[i] + nLift * lift;
+            }
 
             var accs = new Dictionary<int, Acc>();
             var order = new List<int>();
@@ -1006,15 +1042,28 @@ namespace AblatorDecals
                 else
                 {
                     float thA = 0;
-                    pa = Map(a, ref thA, true); pb = Map(b, ref thA, false); pc = Map(c, ref thA, false);
-                    // caps (faces turned more than 45 deg towards the axis): one flat chart across the axis, continuous over the cap
-                    // (the round chart fanned out there into ever thinner wedges)
-                    endChart = Math.Abs(Vector3.Dot(fn, axis)) > 0.7f || Math.Abs((pb.x-pa.x)*(pc.y-pa.y)-(pc.x-pa.x)*(pb.y-pa.y)) < 1e-8f;
-                    if (endChart)
+                    // Upper nose on tapered cockpit covers (opposite the belly meridian): flat top chart avoids azimuthal shear
+                    // where (ArcAt(+-pi) - arc0) * ratio would otherwise drag tiles diagonally as the nose narrows.
+                    bool topChart = !S.Overlay && HasClip && Math.Abs(Vector3.Dot(fn, axis)) <= 0.7f && Vector3.Dot(fn, front) < -0.2f;
+                    if (topChart)
                     {
-                        pa = new Vector2(Vector3.Dot(a - center, lateral), Vector3.Dot(a - center, front));
-                        pb = new Vector2(Vector3.Dot(b - center, lateral), Vector3.Dot(b - center, front));
-                        pc = new Vector2(Vector3.Dot(c - center, lateral), Vector3.Dot(c - center, front));
+                        endChart = true;
+                        pa = new Vector2(Vector3.Dot(a - center, lateral), Vector3.Dot(a - center, axis));
+                        pb = new Vector2(Vector3.Dot(b - center, lateral), Vector3.Dot(b - center, axis));
+                        pc = new Vector2(Vector3.Dot(c - center, lateral), Vector3.Dot(c - center, axis));
+                    }
+                    else
+                    {
+                        pa = Map(a, ref thA, true); pb = Map(b, ref thA, false); pc = Map(c, ref thA, false);
+                        // caps (faces turned more than 45 deg towards the axis): one flat chart across the axis, continuous over the cap
+                        // (the round chart fanned out there into ever thinner wedges)
+                        endChart = Math.Abs(Vector3.Dot(fn, axis)) > 0.7f || Math.Abs((pb.x-pa.x)*(pc.y-pa.y)-(pc.x-pa.x)*(pb.y-pa.y)) < 1e-8f;
+                        if (endChart)
+                        {
+                            pa = new Vector2(Vector3.Dot(a - center, lateral), Vector3.Dot(a - center, front));
+                            pb = new Vector2(Vector3.Dot(b - center, lateral), Vector3.Dot(b - center, front));
+                            pc = new Vector2(Vector3.Dot(c - center, lateral), Vector3.Dot(c - center, front));
+                        }
                     }
                 }
                 float d2 = (pb.x - pa.x) * (pc.y - pa.y) - (pb.y - pa.y) * (pc.x - pa.x);
@@ -1169,7 +1218,7 @@ namespace AblatorDecals
                 foreach (var loop in region.Loops) for (int k=0;k<loop.Length;k++)
                 {
                     var p=loop[k];var q=loop[(k+1)%loop.Length];
-                    if(Math.Max(p.x,q.x)<lower.x || Math.Min(p.x,q.x)>upper.x || Math.Max(p.y,q.y)<lower.y || Math.Min(p.y,q.y)>upper.y) continue;
+                    if((q-p).sqrMagnitude < 1e-12f || Math.Max(p.x,q.x)<lower.x || Math.Min(p.x,q.x)>upper.x || Math.Max(p.y,q.y)<lower.y || Math.Min(p.y,q.y)>upper.y) continue;
                     Vector3 normal=((q.y-p.y)*region.A-(q.x-p.x)*region.B).normalized;
                     Split(normal,-Vector3.Dot(normal,region.O+p.x*region.A+p.y*region.B));
                 }
@@ -1844,7 +1893,8 @@ namespace AblatorDecals
             t.O = gone ? null : ClipCell(t.Halves, 0, out t.Tags);
             Vector2[] mid = ClipCell(t.Halves, 1, out _);
             t.MidArea = mid != null ? Math.Abs(Shoelace(mid)) : 0;
-            if (t.O == null || Math.Abs(Shoelace(t.O)) < 0.02f * pat.CellArea) t.State = 0;
+            bool atCut = t.Tags != null && Array.IndexOf(t.Tags, TagFootprint) >= 0;
+            if (t.O == null || Math.Abs(Shoelace(t.O)) < (atCut ? 0.006f : 0.02f) * pat.CellArea) t.State = 0;
         }
 
         // DESIGN-v8 B1: straight cut at a clip or cut plane like the footprint (wall, bevel; the top is trimmed, the foot
@@ -1853,7 +1903,11 @@ namespace AblatorDecals
         {
             var n = new Vector3(pl.x, pl.y, pl.z);
             var n2 = new Vector2(Vector3.Dot(t.U, n), Vector3.Dot(t.V, n));
-            float len = n2.magnitude, top = Vector3.Dot(n, t.C) + pl.w + (S.SurfaceOffset + S.Thickness) * Vector3.Dot(t.N, n);
+            float len = n2.magnitude, slope = Vector3.Dot(t.N, n);
+            // Shallow tapers/shoulders near stack seams (0 < slope <= 0.5) must not pull the cut back behind the seam plane;
+            // steeper faces still trim the tile top so it does not overhang, and negative slopes still extend to close V-gaps.
+            float liftOff = slope < 0 ? (S.SurfaceOffset + S.Thickness) * slope : slope > 0.5f ? (S.SurfaceOffset + S.Thickness) * (slope - 0.5f) : 0;
+            float top = Vector3.Dot(n, t.C) + pl.w + liftOff;
             if (len < 0.05f) return top > 0;
             float h = -top / len;
             if (h < 2.5f * s) t.Halves.Add(new Half { N = n2 / len, HTile = h, HMid = h, Raw = h, Tag = TagFootprint });
@@ -1868,7 +1922,7 @@ namespace AblatorDecals
         private bool RegionHalves(Tile t, CoverRegion r, bool outside)
         {
             bool gone = false;
-            float reach = 0.8f * s + S.Thickness;
+            float reach = 1.15f * s + S.Thickness;
             Vector3 rel = t.C - r.O;
             var q = new Vector2(Vector3.Dot(rel, r.A), Vector3.Dot(rel, r.B));
             // candidate edges nearest first; one cut per direction (outward normals more than ~18 deg apart): both sides of a band
@@ -1900,7 +1954,7 @@ namespace AblatorDecals
             var taken = new List<Vector2>();
             foreach (var (_, dir, plane) in cand)
             {
-                if (taken.Exists(o => Vector2.Dot(o, dir) > 0.95f)) continue;
+                if (taken.Exists(o => Vector2.Dot(o, dir) > 0.985f)) continue;
                 taken.Add(dir);
                 gone |= PlaneHalf(t, plane);
             }
@@ -2045,12 +2099,12 @@ namespace AblatorDecals
         // profit too, enable when their scenes are rechecked.
         private List<SurfaceIndex.ShellTri> CapShell()
         {
-            // ponytail: not with chart regions split by domains (texture masks such as the Mk3's: shells crossed the panel borders);
-            // plain regions (the Mk2's smooth side border) keep the cap of the planes they replace
+            // Only true doubly-curved sharp nose tips (Gaussian curvature, plus local normal-turn extension right at the tip),
+            // never long 1D creases/chines or large flat belly faces.
             if (!HasClip || S.Regions != null && Array.Exists(S.Regions, r => r.Domain != null && r.Domain.Length > 0)) return null;
             List<SurfaceIndex.ShellTri> shell = surface.CurvedShell(2 * s, Mathf.PI / 2.25f, s, Mathf.Cos(45 * Mathf.Deg2Rad), (a, b, c) =>
                 ClipDist(a) <= 0 && ClipDist(b) <= 0 && ClipDist(c) <= 0 && Vector3.Dot(Vector3.Cross(b - a, c - a).normalized, decalN) >= cosWrap &&
-                Vector3.Cross(b - a, c - a).magnitude <= 8 * s * s); // 1.7.1: no broad face (a 1.8 m2 belly face next to a tight rim was the Mk3's black spot)
+                Vector3.Cross(b - a, c - a).magnitude <= 4 * s * s);
             if (shell.Count == 0) return null;
             shellTris = new HashSet<int>();
             foreach (SurfaceIndex.ShellTri st in shell) shellTris.Add(st.Index);
@@ -2310,7 +2364,7 @@ namespace AblatorDecals
                         c0 |= e01 || e12 || e20; // partly covered: split
                     }
                     else if (cq && c0 && c1 && c2 || wanted == 0) return;
-                    if ((cq || c0 || c1 || c2) && depth < 3)
+                    if ((cq || c0 || c1 || c2) && depth < (mask ? 3 : 2))
                     {
                         Vector3 m01 = (p0 + p1) / 2, m12 = (p1 + p2) / 2, m20 = (p2 + p0) / 2;
                         Piece(p0, m01, m20, r01, false, r20, depth + 1);
@@ -2525,6 +2579,9 @@ namespace AblatorDecals
             // ends where the hull leaves its plane by DepthLimit, so cut edges of neighbours line up whatever their frames
             if (Math.Abs(Vector3.Dot(h.P - t.C, t.N)) > depthLimit) return false;
             if (!InWrap(h) || UnderObstacle(h.P, t.N)) return false;
+            // Cockpit masks: enforce the exact mask contour on every tile drop sample so PlaceOnce's bisection trims border
+            // tiles smoothly along curved/concave contours without overhanging spikes or deleting whole border rows.
+            if (HasClip && !InClip(h.P, 0.001f)) return false;
             if (t.Strip) return Vector3.Dot(h.FaceN, t.F) >= cosPlanar;
             // a flat face narrower than a tile beyond a crease (chamfer of a wing edge) gets strip tiles of its own:
             // the tile ends exactly on the crease line instead of hovering over the chamfer
@@ -3441,6 +3498,44 @@ namespace AblatorDecals
             }
         }
 
+        // Recessed dark joint underlay for cockpit masks: exact to the mask contour (SkinPolygons) and sitting at
+        // SurfaceOffset (well below the 3D tile tops, so zero Z-fighting and zero flat blotches over tiles), closing any
+        // tiny micro-crevices between rigid 3D tiles on doubly-curved cockpit hulls. No thermal area of its own.
+        private void AddMaskJointBed(Dictionary<int, Acc> accs)
+        {
+            bool ExactInMask(Vector3 p)
+            {
+                if (cuts != null)
+                    foreach (Vector4 c in cuts)
+                        if (c.x * p.x + c.y * p.y + c.z * p.z + c.w > 1e-4f) return false;
+                if (S.ClipPlanes != null)
+                    foreach (Vector4 c in S.ClipPlanes)
+                        if (c.x * p.x + c.y * p.y + c.z * p.z + c.w <= 1e-4f) return true;
+                if (S.Regions != null)
+                    foreach (CoverRegion r in S.Regions)
+                        if (RegionDist(r, p, out _) <= 1e-4f) return true;
+                return false;
+            }
+            float lift = Math.Max(0.0015f, S.SurfaceOffset * 0.75f);
+            for (int k = 0; k < wrapIn.Length; k++)
+            {
+                if (!wrapIn[k] || !surface.Triangle(k, out Vector3 a, out Vector3 b, out Vector3 c, out Vector3 n, out int owner) ||
+                    !accs.TryGetValue(owner, out Acc acc)) continue;
+                if (S.TankAxis.sqrMagnitude > 0.5f && Vector3.Dot(n, S.TankAxis.normalized) < -0.999f) continue;
+                if (surface.Raycast((a + b + c) / 3 + n * 0.01f, n, 0.5f, -1.01f, out SurfaceHit inner, false) && !Obstacle(inner.Owner)) continue;
+                foreach (var piece in SkinPolygons(a, b, c))
+                {
+                    Vector3 mid = Vector3.zero;
+                    foreach (Vector3 p in piece) mid += p;
+                    mid /= piece.Count;
+                    if (!ExactInMask(mid) || InKeepOut(mid) || UnderObstacle(mid, n)) continue;
+                    int i0 = acc.V.Count;
+                    for (int j = 0; j < piece.Count; j++) Add(acc, piece[j] + n * lift, n, Vector2.zero);
+                    for (int j = 1; j + 1 < piece.Count; j++) Tri(acc, acc.Joint, i0, i0 + j, i0 + j + 1, n);
+                }
+            }
+        }
+
         private void Emit(TileResult result, List<TileOutline> outlines)
         {
             var accs = new Dictionary<int, Acc>();
@@ -3477,6 +3572,8 @@ namespace AblatorDecals
 
             if (S.FillHull && !HasClip && !S.Overlay && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0))
                 AddTankJointBed(accs);
+            else if (S.FillHull && HasClip && !S.Overlay && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0))
+                AddMaskJointBed(accs);
             result.Parts = new PartTiles[order.Count];
             for (int i = 0; i < order.Count; i++)
             {
@@ -3503,9 +3600,20 @@ namespace AblatorDecals
             Vector2[] o = t.O;
             int m = o.Length;
             Vector2 c2 = Centroid(o);
-            // 1.6.2: no bevel on a tile cut straight by a plane or mask edge (part seams, stack faces, cockpit borders): its top runs
-            // flush to the cut, so two parts' tiles meet without the V groove of both bevels ("Fuge 0 bündig")
-            bool bevel = S.BevelWidth > 0 && S.BevelDepth > 0 && Array.IndexOf(t.Tags, TagFootprint) < 0;
+            // 1.6.2 / 1.7.3: no bevel on a tile cut straight by a plane/mask edge or ending right next to a stack seam cut:
+            // its top runs flush to the seam, so two parts' tiles meet without a V-groove gap.
+            bool nearCut = false;
+            if (cuts != null && Array.IndexOf(t.Tags, TagCut) >= 0)
+            {
+                for (int k = 0; k < m && !nearCut; k++)
+                {
+                    if (t.Tags[k] != TagCut) continue;
+                    Vector3 ep = OnPlane(t, (o[k] + o[(k + 1) % m]) * 0.5f, 0);
+                    foreach (Vector4 cp in cuts)
+                        if (Mathf.Abs(cp.x * ep.x + cp.y * ep.y + cp.z * ep.z + cp.w) < 0.08f) { nearCut = true; break; }
+                }
+            }
+            bool bevel = S.BevelWidth > 0 && S.BevelDepth > 0 && Array.IndexOf(t.Tags, TagFootprint) < 0 && !nearCut;
             float hOut = bevel ? t.Htop - S.BevelDepth : t.Htop;
 
             // top: fan over the inset outline

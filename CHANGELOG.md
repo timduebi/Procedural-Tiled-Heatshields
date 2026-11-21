@@ -2,6 +2,12 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.7.3 (2026-11-21)
+
+- **Cockpits (Mk1 / Mk2 / Mk3) with clean 3D individual tiles:** Replaced the old cockpit border-fill pass (which dropped curved border tiles and produced flat black patches and holes) with exact contour clipping directly in tile placement plus a recessed dark joint underlay (`AddMaskJointBed`). Restricted nose caps (`CapShell`/`CurvedShell`) to true doubly-curved nose tips so 1D chines and belly faces on Mk2/Mk3 stay tiled with real 3D tiles. Fixed asymmetric nose-panel cutout on the Mk3 cockpit (`CockpitCover.cfg`). All six pre-baked cockpit covers (`Hex` and `Square`) rebaked (~3× smaller files, 100% mask coverage, 0 protruding tiles).
+- **Part-seam gaps fixed:** Fixed inward cargo-bay / service-bay stack nodes (`top2`/`bottom2`, recessed 20–100 mm inside the outer bulkhead) cutting off exterior tiles and creating 40 mm gaps between stacked bays. Prevented shallow tapers from pulling cut planes behind the seam, kept smaller seam slivers at stack cuts, and disabled bevels on tiles right beside a stack seam so adjacent parts meet flush without V-grooves.
+- **Performance & stability:** Reduced default `glowBinAngle` / `glowMaxBins` from `6°` / `48` to `18°` / `12` (and capped overlays at `24°` / `8`), cutting material and draw-call counts by ~4–10× per decal. Eliminated 50 Hz `FixedUpdate` GC allocations, added early returns when packed or cool in vacuum, and switched frontal-area summation to bin level. Upgraded `SurfaceIndex.CurvedShell` from $O(V^2)$ to an $O(V)$ spatial hash. Made editor background build jobs cancellable, fixed mirrored transform normals and leaked cloned materials in `TileHost`, cached localized labels and input lock state in `DecalWindow`, prevented `Apply to all` from overwriting fixed `tileSize`/`thickness` on pre-baked cockpit covers, and added KSP-AVC metadata (`AblatorDecals.version`).
+
 ## 1.7.2 (2026-11-21)
 
 - Cockpit polish: grids now unwrap cleanly across sharp edges (Mk2 chine) instead of starting a second flood; border fill extends slightly underneath trimmed edge tiles (~1 cm strip, eliminating bright gaps), and untextured fill pieces are dark; all cockpits rebaked. Shielded docking port hood receives border fill and a closed tip. Preview renderer: undersides shaded dark like in-game.

@@ -37,32 +37,36 @@ namespace AblatorDecals
 
         public static TileResult Read(byte[] data)
         {
-            var rd = new BinaryReader(new MemoryStream(data));
-            if (rd.ReadInt32() != Magic || rd.ReadInt32() != Version) throw new InvalidDataException("not an AblatorDecals cover file");
-            var r = new TileResult { OnSurface = true, TileCount = rd.ReadInt32(), PartialCount = rd.ReadInt32(), CoveredArea = rd.ReadSingle() };
-            r.Parts = new PartTiles[rd.ReadInt32()];
-            for (int k = 0; k < r.Parts.Length; k++)
+            using (var ms = new MemoryStream(data))
+            using (var rd = new BinaryReader(ms))
             {
-                var p = new PartTiles { Owner = 0 };
-                int n = rd.ReadInt32();
-                p.Vertices = new Vector3[n]; p.Normals = new Vector3[n]; p.Uvs = new Vector2[n];
-                for (int i = 0; i < n; i++) { p.Vertices[i] = V3(rd); p.Normals[i] = V3(rd); p.Uvs[i] = new Vector2(rd.ReadSingle(), rd.ReadSingle()); }
-                int bins = rd.ReadInt32();
-                p.BinTriangles = new int[bins][]; p.BinNormals = new Vector3[bins]; p.BinAreas = new float[bins];
-                for (int b = 0; b < bins; b++) { p.BinTriangles[b] = Ints(rd); p.BinNormals[b] = V3(rd); p.BinAreas[b] = rd.ReadSingle(); }
-                p.JointTriangles = Ints(rd);
-                p.BackTriangles = Ints(rd);
-                p.TileAreaVectors = new Vector3[rd.ReadInt32()];
-                for (int i = 0; i < p.TileAreaVectors.Length; i++) p.TileAreaVectors[i] = V3(rd);
-                p.CoveredArea = rd.ReadSingle();
-                r.Parts[k] = p;
+                if (rd.ReadInt32() != Magic || rd.ReadInt32() != Version) throw new InvalidDataException("not an AblatorDecals cover file");
+                var r = new TileResult { OnSurface = true, TileCount = rd.ReadInt32(), PartialCount = rd.ReadInt32(), CoveredArea = rd.ReadSingle() };
+                r.Parts = new PartTiles[rd.ReadInt32()];
+                for (int k = 0; k < r.Parts.Length; k++)
+                {
+                    var p = new PartTiles { Owner = 0 };
+                    int n = rd.ReadInt32();
+                    p.Vertices = new Vector3[n]; p.Normals = new Vector3[n]; p.Uvs = new Vector2[n];
+                    for (int i = 0; i < n; i++) { p.Vertices[i] = V3(rd); p.Normals[i] = V3(rd); p.Uvs[i] = new Vector2(rd.ReadSingle(), rd.ReadSingle()); }
+                    int bins = rd.ReadInt32();
+                    p.BinTriangles = new int[bins][]; p.BinNormals = new Vector3[bins]; p.BinAreas = new float[bins];
+                    for (int b = 0; b < bins; b++) { p.BinTriangles[b] = Ints(rd); p.BinNormals[b] = V3(rd); p.BinAreas[b] = rd.ReadSingle(); }
+                    p.JointTriangles = Ints(rd);
+                    p.BackTriangles = Ints(rd);
+                    p.TileAreaVectors = new Vector3[rd.ReadInt32()];
+                    for (int i = 0; i < p.TileAreaVectors.Length; i++) p.TileAreaVectors[i] = V3(rd);
+                    p.CoveredArea = rd.ReadSingle();
+                    r.Parts[k] = p;
+                }
+                r.Colliders = new TileBuilder.Box[rd.ReadInt32()];
+                for (int i = 0; i < r.Colliders.Length; i++) r.Colliders[i] = new TileBuilder.Box { Center = V3(rd), Forward = V3(rd), Up = V3(rd), Size = V3(rd) };
+                return r;
             }
-            r.Colliders = new TileBuilder.Box[rd.ReadInt32()];
-            for (int i = 0; i < r.Colliders.Length; i++) r.Colliders[i] = new TileBuilder.Box { Center = V3(rd), Forward = V3(rd), Up = V3(rd), Size = V3(rd) };
-            return r;
         }
 
-        // a copy of a cover (part space) in another space (m: part -> decal, rigid); all tiles on owner 0 (the cockpit)
+        // a copy of a cover (part space) in another space (m: part -> decal, rigid); all tiles on owner 0 (the cockpit).
+        // Uvs, BinTriangles, BinAreas, JointTriangles, and BackTriangles are shared read-only with the cached TileResult.
         public static TileResult Transform(TileResult c, Matrix4x4 m)
         {
             var r = new TileResult { OnSurface = true, TileCount = c.TileCount, PartialCount = c.PartialCount, CoveredArea = c.CoveredArea, Parts = new PartTiles[c.Parts.Length] };
