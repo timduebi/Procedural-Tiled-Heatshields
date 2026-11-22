@@ -4,14 +4,14 @@ Sprache: [English](README.md) | **Deutsch**
 
 AblatorDecals ist ein Mod für Kerbal Space Program 1.12.5. Das Part "Ablative Decal" (Anzeigename im Spiel: "Ablative Hitzekacheln") wird wie ein Decal auf die Oberfläche eines Parts geklebt. Es legt dünne 3D-Hitzekacheln auf das gewählte Teil. Angebautes Fahrwerk, Lufteinlässe und Steuerflächen können eine eigene Kachelhülle erhalten. Auf beweglichen Teilen fahren die Kacheln mit. Die Kacheln sehen aus wie bei Starship (Sechsecke) oder Space Shuttle (eckige Kacheln). Thermisch ist das Decal ein Ablator-Hitzeschild: Es nimmt beim Wiedereintritt Wärme von den Teilen auf, auf denen es liegt, und verbraucht dabei Ablator. Das Ganze bleibt ein einziges Part.
 
-Version 1.7.4 wurde mit dem vollständigen Selbsttest und dem Vorschauwerkzeug an den KSP-Modellen geprüft. Die Abnahme im Spiel steht aus. Änderungen stehen im [CHANGELOG](CHANGELOG.de.md), der Wiedereinstieg in [CLAUDE-HANDOFF.md](CLAUDE-HANDOFF.md).
+Version 1.8.0 wurde mit dem vollständigen Selbsttest und dem Vorschauwerkzeug an Stock- und ReStock-Modellen geprüft. Änderungen stehen im [CHANGELOG](CHANGELOG.de.md), der Wiedereinstieg in [docs/CLAUDE-HANDOFF.md](docs/CLAUDE-HANDOFF.md).
 
 ## Installation
 
 1. Den Ordner `GameData/AblatorDecals` in das `GameData` der KSP-Installation kopieren.
-2. ModuleManager ist nicht nötig. Optional: B9PartSwitch (mit ModuleManager, beides über CKAN installierbar) für die schöneren Umschalter von Muster und Kachelart, siehe [B9PartSwitch](#b9partswitch-optional).
+2. ModuleManager ist nicht nötig. Optionale Patches liegen bei für B9PartSwitch (Farbfeld-Umschalter), **Community Tech Tree** (`heatManagementSystems`), **Deadly Reentry**, **FAR** und **VAB Organizer**.
 
-Das Part erscheint im Editor in der Kategorie "Thermal" (mit VAB Organizer unter den Hitzeschilden). In Wissenschaft und Karriere wird es zusammen mit dem Mk2-Cockpit freigeschaltet (Überschallflug, `supersonicFlight`).
+Das Part erscheint im Editor in der Kategorie "Thermal" (mit VAB Organizer unter den Hitzeschilden). In Wissenschaft und Karriere wird es zusammen mit dem Mk2-Cockpit freigeschaltet (`supersonicFlight`, mit Community Tech Tree unter `heatManagementSystems`).
 
 ### Aus dem Quelltext bauen
 
@@ -47,21 +47,26 @@ Aufbau des Fensters (von oben nach unten):
 | Gruppe | Deutsch | Englisch | Bereich | Standard | Wirkung |
 |---|---|---|---|---|---|
 | Kacheln | Muster | Pattern | Sechsecke, Quadrate | Sechsecke | Kachelform und Anordnung. |
-| Kacheln | Kachelart | Tile type | Schwarz, Schlichte Keramik | Schwarz | Aussehen. Die Textur ergibt sich aus Muster und Kachelart (Sechsecke + Schwarz = Starship, Quadrate + Schwarz = Shuttle HRSI). Weiß gibt es seit 1.4 nicht mehr; damit gespeicherte Decals laden schwarz. |
+| Kacheln | Kachelart | Tile type | Schwarz, Schlichte Keramik, NASA-Weiß, Stahl | Schwarz | Aussehen (Schwarz = Starship / Shuttle HRSI, NASA-Weiß = Shuttle LRSI, Stahl = Starship-Edelstahl, Schlichte Keramik = durchgehende Keramik). |
 | Kacheln | Kachelgröße | Tile size | 0,03 bis 0,5 m | 0,1 m | Gitterabstand inklusive Fuge: bei Sechsecken der Abstand gegenüberliegender Kanten, bei Quadraten die Kantenlänge. |
 | Kacheln | Musterwinkel | Pattern angle | -90 bis 90 Grad | 0 | Dreht das Muster um die Decal-Normale. |
 | Kacheln | Fugenbreite | Joint width | 0 bis 0,02 m | 0 m | Breite der Fugen zwischen den Kacheln. Gespeicherte Decals behalten ihren Wert. |
 | Kacheln | Dicke (Ablator) | Thickness (ablator) | 0,005 bis 0,3 m | 0,025 m | Kachelstärke. Bestimmt die Ablator-Menge (Abgedeckte Fläche mal Dicke mal 1000 Einheiten je m³). |
+| Kacheln | Einstellungen auf alle kopieren | Copy settings to all shields | Knopf | | Überträgt Aussehen, Umgriff, Höhe, Fuge, Verwitterung und Kachel-Abplatzen auf alle anderen Decals des Schiffs (feste Größen vorgefertigter Cockpits bleiben erhalten). |
 | Fläche | Abdeckung | Coverage | Ganzes Teil / Fläche begrenzen | Ganzes Teil | "Ganzes Teil": das Decal kachelt sein Teil, soweit es innerhalb von Max. Umgriff zur Decal-Normalen zeigt, an jeder Teilnaht gerade geschnitten. "Fläche begrenzen": Breite und Höhe wie bisher. Spielstände vor 1.3 laden als "Fläche begrenzen". |
 | Fläche | Breite | Width | 0,2 bis 60 m | 2 m | Breite der Fläche (nur bei "Fläche begrenzen"). |
 | Fläche | Höhe | Height | 0,2 bis 60 m | 2 m | Höhe der Fläche (nur bei "Fläche begrenzen"). |
 | Fläche | Max. Umgriff | Max wrap angle | 10 bis 180 Grad | 100 | Wie weit die Kacheln um den Rumpf herumlaufen (Winkel zwischen Rumpf und Blickrichtung des Decals). |
 | Fläche | Bedeckte Höhe | Covered height | 1 bis 100 % (1-%-Schritte) | 100 % | Anteil der Ausdehnung des Teils entlang der Decal-Normalen, gemessen von der Decal-Seite (100 % = ganzes Teil, 50 % auf der Seite eines Mk3-Tanks = bis zur halben Höhe). Gerader Schnitt, zusätzlich zu Max. Umgriff (der strengere gilt). |
+| Fläche | Rumpffläche | Hull surface | Glatter Zylinder / Exaktes Modell | Automatisch | Auf runden Tanks & Stationsmodulen (ReStock, ReStockPBR, SSPX, NFLV) automatisch aktiv: überbrückt horizontale Versteifungsringe glatt und umhüllt herausragende Rohre/Leitern rein optisch mit einem ungekachelten Overlay. Aus bei Mk2, Mk3, Flügeln und Hubs. |
 | Fläche | Abwickeln | Unroll | Entlang des Rumpfs / Von vorne gesehen | Entlang des Rumpfs | Wie Breite und Höhe gemessen werden: entlang der Oberfläche wie bei einem Aufkleber, oder als Fläche, die man von vorne sieht (projiziert, gerade Kante von vorne, z. B. für Nasenkegel). |
 | Fläche | Rand | Edge | Ganze Kacheln / Gerader Schnitt | Ganze Kacheln | Verhalten am Rand der Fläche. |
 | Feinheiten | Textur | Texture | Pro Kachel / Über die Kacheln hinweg | Pro Kachel | Nur bei "Schlichte Keramik": Bildausschnitt je Kachel oder ein Bild über alle Kacheln. |
 | Feinheiten | Texturmaßstab | Texture scale | 0 bis 20 m | 2 m | Nur bei "Schlichte Keramik": Breite einer Texturwiederholung. Bei "Über die Kacheln hinweg" streckt 0 das Bild über die Fläche. |
 | Feinheiten | Kachelverlust | Missing tiles | 0 bis 20 % | 0 | Anteil der Kacheln, die rein kosmetisch weggelassen werden. |
+| Feinheiten | Verwitterung | Weathering | 0 bis 100 % (5-%-Schritte) | 0 % | Grund-Rußtönung bereits im Editor und beim Start sichtbar (ohne Netz-Neubau). |
+| Feinheiten | Kachel-Abplatzen | Reentry tile shedding | Aktiv / Aus | Aus (Sandbox), Aktiv (Wissenschaft/Karriere) | Lässt bei extremer Hitze oder niedrigem Ablator in 5-%-Schritten bis zu 25 % der Kacheln abplatzen. Ingenieure können im EVA reparieren (Karriere: 1 Stock-EVA-Reparaturset). |
+| Feinheiten | Luken frei lassen | Keep hatches clear | Frei lassen / Überkacheln | Frei lassen (`Überkacheln` bei `mk3CrewCabin`) | Legt fest, ob `Airlock`-Luken ausgespart oder überkachelt werden. |
 | Feinheiten | Kacheln neu mischen | Shuffle tiles | Knopf | | Neue Zufallsauswahl der Atlaszellen und fehlenden Kacheln (auch bei den Symmetrie-Gegenstücken). |
 
 ### Muster und Kachelart
@@ -74,6 +79,8 @@ Aufbau des Fensters (von oben nach unten):
 |---|---|---|
 | Schwarz | `HexBlack` (Starship) | `SquareBlack` (Shuttle HRSI) |
 | Schlichte Keramik | `Ceramic` mit `HexCeramicGlow` | `Ceramic` mit `SquareCeramicGlow` |
+| NASA-Weiß | `HexWhite` | `SquareWhite` (Shuttle LRSI) |
+| Stahl | `HexSteel` (Starship-Stahl) | `SquareSteel` |
 
 Die Kachelgröße bleibt beim Musterwechsel unverändert (die frühere automatische Umschaltung 0,2 ↔ 0,15 m entfällt).
 
@@ -240,7 +247,7 @@ Diese Felder gehören zu `MODULE { name = ModuleAblativeDecal }` und erscheinen 
 | `cornerBendAngle` | 35 | Größter Knickwinkel (Grad) der geglätteten Oberfläche, über den Kacheln noch aufgesetzt werden. |
 | `faceBendAngle` | 60 | Größter Knickwinkel (Grad) einzelner Rumpfflächen. |
 | `curvatureFactor` | 1 | Mindest-Biegeradius, über den Kacheln laufen, in Kachelgrößen. Größer heißt strenger. |
-| `maxTiles` | 40000 | Obergrenze der Kachelzahl je Decal. Wird sie erreicht, steht eine Warnung im Log. |
+| `maxTiles` | 60000 | Obergrenze der Kachelzahl je Decal. Wird sie erreicht, steht eine Warnung im Log. |
 | `colliderPatchSize` | 1 | Kantenlänge in m der Flächen, die je eine Collider-Box bekommen (Anklicken im Editor). |
 | `gearMargin` | 0.3 | Abstand in m um Fahrwerk (Teil, Rad samt Federweg), in dem keine Kachel-Collider-Box entsteht. Die Kacheln bleiben sichtbar. |
 
@@ -293,13 +300,13 @@ Ebenfalls hilfreich: die komplette `KSP.log` nach dem Test sowie die Angabe der 
 - **Ein Decal belegt sein Teil** samt daran klebender Steuerflächen, Lufteinlässe und eingefahrenem Fahrwerk, keine Nachbarteile. Auf einem Cockpit mit Cockpit-Form nur das Cockpit selbst.
 - **Skinned oder animierte Parent-Meshes werden nicht unterstützt** (nur beim Fahrwerk werden Skinned Meshes in eingefahrener Pose gelesen). Der Mod liest die statischen Meshes (`MeshFilter`) der Teile. Nicht lesbare Meshes werden übersprungen (Log-Warnung `is not readable, skipped`).
 - Die Kacheln sind flach und starr. Auf stark gekrümmten Flächen sind sie einzeln zugeschnitten, aber nicht gebogen, und es bleiben vereinzelt Lücken, wo der Rumpf zu stark knickt.
-- Teile mit mehr Kacheln als `maxTiles` (Standard 40000) werden abgeschnitten, mit Warnung im Log.
-- Im Flug wird das Netz nur beim Start und bei Änderungen am Schiff (abgetrennte oder verlorene Teile) gebaut. Ändert sich im Flug sonst etwas am Rumpf, passen sich die Kacheln nicht an.
+- Teile mit mehr Kacheln als `maxTiles` (Standard 60000) werden abgeschnitten, mit Warnung im Log.
+- Im Flug wird das Netz nur beim Start, bei Änderungen am Schiff (abgetrennte oder verlorene Teile), beim Kachel-Abplatzen oder bei der EVA-Reparatur neu gebaut.
 - Der Hitzeschutz ist ein Modell, kein Abbild der Stock-Hitzeschilde. Mit `efficiency` und `unitsPerCubicMeter` lässt sich die Stärke abstimmen.
-- **Lizenz.** Aus Conformal Decals wurde kein Code und kein Shader übernommen; die Kacheln entstehen als eigene Geometrie, ohne eigenen Shader. Die Lizenzwahl für AblatorDecals liegt beim Autor und ist noch nicht getroffen.
+- **Lizenz.** Veröffentlicht unter der [MIT-Lizenz](LICENSE). Aus Conformal Decals wurde kein Code und kein Shader übernommen; die Kacheln entstehen als eigene Geometrie, ohne eigenen Shader.
 
 ## Dateien
 
-Siehe `ARCHITECTURE.md` für den Aufbau, `DESIGN.md` für die Spezifikation und `CHANGELOG.de.md` (bzw. `CHANGELOG.md` auf Englisch) für die Änderungen.
+Siehe `docs/ARCHITECTURE.md` für den Aufbau, `docs/DESIGN.md` für die Spezifikation und `CHANGELOG.de.md` (bzw. `CHANGELOG.md` auf Englisch) für die Änderungen.
 
-Selbsttest der Mathematik: `dotnet run --project tests/SelfCheck` (endet mit `SelfCheck OK`). Offline-Vorschau: `tools/Preview` (siehe `ARCHITECTURE.md`).
+Selbsttest der Mathematik: `dotnet run --project tests/SelfCheck` (endet mit `SelfCheck OK`). Offline-Vorschau: `tools/Preview` (siehe `docs/ARCHITECTURE.md`).

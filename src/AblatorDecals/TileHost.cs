@@ -206,6 +206,14 @@ namespace AblatorDecals
                 if (Materials[i].HasProperty("_Color")) Materials[i].SetColor("_Color", c);
         }
 
+        // 1.8: per-bin char (directional soot: windward bins darker)
+        public void SetBinChar(int bin, Color c)
+        {
+            if (Go == null || bin < 0 || bin >= BinCount || bin >= Materials.Length) return;
+            Material m = Materials[bin];
+            if (m != null && m.HasProperty("_Color")) m.SetColor("_Color", c);
+        }
+
         // 1.7.1: the joint material glows too (KSP/Emissive/Diffuse), one colour per host
         public Color JointSet = Color.black;
         public void SetJointGlow(Color c)

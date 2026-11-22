@@ -18,6 +18,7 @@ static class Program
     static int Main(string[] args)
     {
         if (args.Length > 0 && args[0] == "v17") { V162SkinChartCheck(); V17SquareCreaseCheck(); Console.WriteLine("SelfCheck v17 OK"); return 0; } // quick: 1.7 only
+        if (args.Length > 0 && args[0] == "v18") { SmoothHullChecks(); WholeIslandChecks(); Console.WriteLine("SelfCheck v18 OK"); return 0; } // quick: 1.8 only
         if (args.Length > 0 && args[0] == "v11") // quick: only the DESIGN-v11 checks
         {
             V11OverlayChecks();
@@ -68,6 +69,8 @@ static class Program
         V11OverlayChecks();
         V11RegionChecks();
         V11CoverFileChecks();
+        SmoothHullChecks();
+        WholeIslandChecks();
         PerformanceCheck();
         GlowChecks.Run();
         Console.WriteLine("SelfCheck OK");
@@ -1715,6 +1718,140 @@ static class Program
         }
         return Math.Abs(total - b.R.CoveredArea) < 1e-3f * Math.Max(1, total) &&
                b.R.TileCount == b.T.Count && b.R.TileCount == b.R.Parts.Sum(p => p.TileAreaVectors.Length);
+    }
+
+    // ---------- 1.8 smooth hull ----------
+
+    // wall 1.25 m, y -2..2, a 3 cm ring at y 0..0.1, two vertical pipes (r 4 cm) at 0 and 90 deg standing 1.30 m off the axis
+    static Mesh RibbedPipedTank(out Vector3[] pipeAxes)
+    {
+        Mesh tank = Lathe(new[] { (-2f, 1.25f), (0f, 1.25f), (0f, 1.28f), (0.1f, 1.28f), (0.1f, 1.25f), (2f, 1.25f) }, 64);
+        pipeAxes = new[] { new Vector3(1.30f, 0, 0), new Vector3(0, 0, 1.30f) };
+        foreach (Vector3 at in pipeAxes)
+        {
+            Mesh pipe = Cylinder(0.04f, -1.8f, 1.8f, 12, 0, 0, 1);
+            tank = Merge(tank, new Mesh { V = pipe.V.Select(p => p + at).ToArray(), T = pipe.T });
+        }
+        return tank;
+    }
+
+    static void SmoothHullChecks()
+    {
+        Mesh tank = RibbedPipedTank(out Vector3[] pipes);
+        var owners = new int[tank.T.Length / 3];
+        var res = SurfaceIndex.BuildSmoothHull(tank.V, tank.T, owners, 0, Vector3.up, Vector3.zero, false);
+        Check(res != null, "smooth hull: ribbed tank with pipes detected as round");
+        bool wall = true;
+        for (int i = 0; i < res.Radius.Length; i++)
+            if (Mathf.Abs(res.SliceY[i] - 0.05f) > 0.3f) wall &= Mathf.Abs(res.Radius[i] - 1.25f) < 0.01f;
+        Check(wall, $"smooth hull: radius stays at the wall away from the ring, pipes ignored ({res.Radius.Min():F3}..{res.Radius.Max():F3} m)");
+        Check(Mathf.Abs(res.Radius.Max() - 1.28f) < 0.01f, $"smooth hull: envelope covers the ring ({res.Radius.Max():F3} m)");
+        float slope = 0;
+        for (int i = 1; i < res.Radius.Length; i++) slope = Math.Max(slope, Mathf.Abs(res.Radius[i] - res.Radius[i - 1]) / Math.Max(1e-6f, res.SliceY[i] - res.SliceY[i - 1]));
+        Check(slope <= 0.36f, $"smooth hull: ring bridged by a gentle ramp (steepest {Mathf.Atan(slope) * Mathf.Rad2Deg:F1} deg)");
+        int revTris = 2 * 64 * (res.Radius.Length - 1);
+        bool outward = true;
+        for (int t = 0; t < revTris; t++)
+        {
+            Vector3 a = res.Pos[res.Tri[3 * t]], b = res.Pos[res.Tri[3 * t + 1]], c = res.Pos[res.Tri[3 * t + 2]], m = (a + b + c) / 3;
+            outward &= Vector3.Dot(Vector3.Cross(b - a, c - a), new Vector3(m.x, 0, m.z)) > 0;
+        }
+        Check(outward && res.Owner.Length == res.Tri.Length / 3, "smooth hull: revolution mesh faces radially out");
+        bool onPipes = true;
+        for (int i = 0; i < res.ProtrusionTri.Length; i += 3)
+        {
+            Vector3 m = (res.ProtrusionPos[res.ProtrusionTri[i]] + res.ProtrusionPos[res.ProtrusionTri[i + 1]] + res.ProtrusionPos[res.ProtrusionTri[i + 2]]) / 3;
+            onPipes &= pipes.Any(p => new Vector2(m.x - p.x, m.z - p.z).magnitude < 0.06f);
+        }
+        Check(res.ProtrusionTri.Length >= 3 * 12 && onPipes, $"smooth hull: pipes extracted as protrusions ({res.ProtrusionTri.Length / 3} tris)");
+
+        // not round: Mk2-like oval, Mk3-like flat-bellied hull, and a square prism
+        Mesh oval = Prism(a => new Vector2(1.5f * Mathf.Cos(a), 0.8f * Mathf.Sin(a)), 64);
+        Check(SurfaceIndex.BuildSmoothHull(oval.V, oval.T, null, 0, Vector3.up, Vector3.zero, false) == null, "smooth hull: oval (Mk2-like) rejected");
+        Mesh mk3Like = Prism(a => { var q = new Vector2(1.875f * Mathf.Cos(a), 1.875f * Mathf.Sin(a)); return q.y < -1.625f ? new Vector2(q.x, -1.625f) : q; }, 64);
+        Check(SurfaceIndex.BuildSmoothHull(mk3Like.V, mk3Like.T, null, 0, Vector3.up, Vector3.zero, false) == null, "smooth hull: flat-bellied (Mk3-like) rejected");
+        Mesh square = Prism(a => new Vector2(Mathf.Cos(a), Mathf.Sin(a)) / Mathf.Max(Mathf.Abs(Mathf.Cos(a)), Mathf.Abs(Mathf.Sin(a))), 64);
+        Check(SurfaceIndex.BuildSmoothHull(square.V, square.T, null, 0, Vector3.up, Vector3.zero, false) == null, "smooth hull: square prism rejected");
+        Check(SurfaceIndex.BuildSmoothHull(square.V, square.T, null, 0, Vector3.up, Vector3.zero, true) != null, "smooth hull: forced fit on the square prism");
+
+        // visual skin over the pipe facing the decal
+        var ss = new TileSettings { TileSize = 0.1f, MaxWrapDeg = 100, TankAxis = Vector3.up, TankCenter = Vector3.zero, UvMode = UvMode.Atlas, AtlasCols = 4, AtlasRows = 4, Thickness = 0.025f };
+        PartTiles skin = TileBuilder.BuildVisualSkin(res.ProtrusionPos, res.ProtrusionTri, 0, ss, Vector3.right, null, Vector3.zero, Vector3.forward, Vector3.up);
+        Check(skin != null && skin.Vertices.Length > 0 && skin.BinTriangles.Sum(b => b.Length) > 0, $"visual skin: {skin?.BinTriangles.Sum(b => b.Length) / 3} tris on the pipes");
+        Check(skin.CoveredArea == 0 && skin.TileAreaVectors.Length == 0 && skin.JointTriangles.Length == 0 && skin.BackTriangles.Length == 0 &&
+              skin.BinAreas.All(x => x == 1e-4f) && skin.BinNormals.Length == skin.BinTriangles.Length && skin.BinTriangles.Length <= ss.MaxBins,
+            "visual skin: purely visual (no area, token bin areas)");
+        Check(ValidMesh(new Run { R = new TileResult { Parts = new[] { skin } } }), "visual skin: mesh valid and outward");
+        Check(skin.Uvs.All(q => q.x >= 0.35f / 4 - 1e-4f && q.x <= 0.65f / 4 + 1e-4f && q.y >= 0.35f / 4 - 1e-4f && q.y <= 0.65f / 4 + 1e-4f), "visual skin: atlas UVs inside cell 0,0, no joints");
+        Check(skin.Vertices.All(p => p.x > -0.5f), "visual skin: only the side facing the decal");
+    }
+
+    // whole part, exact mesh: a 360 deg slot (50 cm, inner flanks) the main flood cannot cross (lower ridges it walks over); the island floods tile beyond it
+    static void WholeIslandChecks()
+    {
+        const float r = 1.25f, s = 0.2f;
+        Mesh tank = Merge(Lathe(new[] { (-2f, r), (0.4f, r), (0.4f, r - 0.3f) }, 64), Lathe(new[] { (0.9f, r - 0.3f), (0.9f, r), (2f, r) }, 64));
+        TileSettings Whole(bool axis) => new TileSettings
+        {
+            TileSize = s, Width = Mathf.PI * 2.4f + 2 * s, Height = Mathf.PI * 2.4f + 2 * s, MaxWrapDeg = 100, Gap = 0,
+            TankAxis = axis ? Vector3.up : Vector3.zero, TankCenter = Vector3.zero
+        };
+        Run without = Build(Index(tank, s), Whole(false), new Vector3(r, -1, 0), Vector3.right, Vector3.up);
+        Run with = Build(Index(tank, s), Whole(true), new Vector3(r, -1, 0), Vector3.right, Vector3.up);
+        int above0 = without.T.Count(t => t.Center.y > 0.7f), above1 = with.T.Count(t => t.Center.y > 0.7f);
+        float frontArea = 1.1f * 2 * r * (100 * Mathf.Deg2Rad); // y 0.9..2, +-100 deg
+        float cell = new TilePattern(TileShape.Hex, s, 0).CellArea;
+        Check(above1 * cell >= 0.6f * frontArea && above1 > above0, $"whole part islands: tiles beyond the ring ({above0} -> {above1}, {above1 * cell:F1} of {frontArea:F1} m2)");
+        Check(with.T.All(t => Mathf.Abs(t.N.y) < 0.9f), "whole part islands: nothing on stack faces");
+        Check(ValidMesh(with), "whole part islands: mesh valid");
+    }
+
+    // surface of revolution about y from a (y, r) profile; each profile segment its own faces, outward by the segment's normal
+    static Mesh Lathe((float y, float r)[] profile, int seg)
+    {
+        var v = new List<Vector3>();
+        var n = new List<Vector3>();
+        var t = new List<int>();
+        for (int k = 0; k + 1 < profile.Length; k++)
+        {
+            var (y0, r0) = profile[k];
+            var (y1, r1) = profile[k + 1];
+            Vector2 nn = new Vector2(-(r1 - r0), y1 - y0).normalized; // (y, r) components of the outward normal
+            int b0 = v.Count;
+            for (int i = 0; i <= seg; i++)
+            {
+                float a = 2 * Mathf.PI * i / seg;
+                var d = new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a));
+                Vector3 vn = Vector3.up * nn.x + d * nn.y;
+                v.Add(d * r0 + Vector3.up * y0); n.Add(vn);
+                v.Add(d * r1 + Vector3.up * y1); n.Add(vn);
+            }
+            for (int i = 0; i < seg; i++)
+            {
+                int a = b0 + 2 * i, b = a + 2;
+                t.AddRange(new[] { a, a + 1, b + 1, a, b + 1, b });
+            }
+        }
+        Vector3[] va = v.ToArray(), na = n.ToArray();
+        return new Mesh { V = va, T = Oriented(va, t.ToArray(), i => na[i]) };
+    }
+
+    // straight prism y -2..2 over a closed convex cross-section (x, z) = shape(angle)
+    static Mesh Prism(Func<float, Vector2> shape, int seg)
+    {
+        var v = new List<Vector3>();
+        var n = new List<Vector3>();
+        for (int i = 0; i <= seg; i++)
+        {
+            Vector2 p = shape(2 * Mathf.PI * i / seg);
+            var d = new Vector3(p.x, 0, p.y);
+            v.Add(d + Vector3.down * 2); n.Add(d);
+            v.Add(d + Vector3.up * 2); n.Add(d);
+        }
+        var t = new List<int>();
+        for (int i = 0; i < seg; i++) { int a = 2 * i, b = a + 2; t.AddRange(new[] { a, a + 1, b + 1, a, b + 1, b }); }
+        Vector3[] va = v.ToArray(), na = n.ToArray();
+        return new Mesh { V = va, T = Oriented(va, t.ToArray(), i => na[i]) };
     }
 
     // ---------- meshes ----------

@@ -256,13 +256,18 @@ static class Program
             s.LimitedTank = !whole && !cover;
             s.TankAxis = decal.Xform.InverseApplyDir(decal.Parent.Xform.ApplyDir(Vector3.up)).normalized;
             s.TankCenter = decal.Xform.InverseApply(decal.Parent.Xform.Pos);
+            // 1.8: keepHatches=0|1 (default 0 on the Mk3 crew cabin with whole=1, as the module), smoothHull=0|1|auto (default 0)
+            string kh = str(whole && Norm(decal.Parent.Name).Equals("mk3CrewCabin", StringComparison.OrdinalIgnoreCase) ? "0" : "1", "keepHatches").Trim().ToLowerInvariant();
+            bool keepHatches = kh == "1" || kh == "true";
+            string smoothMode = str("0", "smoothHull").Trim().ToLowerInvariant();
+            if (smoothMode == "true") smoothMode = "1";
             if (whole)
             {
                 float far = 0;
                 foreach (CraftPart tp in targets)
                     foreach (var (verts, _, _) in HullMeshes(tp))
                         foreach (Vector3 q in verts) far = Mathf.Max(far, (q - center).magnitude);
-                s.Width = s.Height = 2 * far + 2 * s.TileSize;
+                s.Width = s.Height = Mathf.PI * far + 2 * s.TileSize; // 1.8: as the module (half way round a short wide tank)
                 reach = 0.5f * Mathf.Sqrt(2) * s.Width + 0.5f * s.Width + 2 * s.TileSize + 1f;
                 // as the module: every stack node of a target with a part on it that is no target (craft attN lines name the
                 // node actually used; cargo bays attach by inward nodes "top2"/"bottom2"), plane along the node orientation
@@ -497,7 +502,7 @@ static class Program
                                 keep.Add(decal.Xform.InverseApply(x.Apply(Vector3.zero)));
                                 foreach (Vector3 ax in new[] { Vector3.right, Vector3.up, Vector3.forward }) keep.Add(decal.Xform.InverseApplyDir(x.ApplyDir(ax)).normalized * rcsR);
                             }
-                            if (rp != tp) continue;
+                            if (rp != tp || !keepHatches) continue;
                             foreach (var (aw, lo, hi) in mu.Airlocks)
                             {
                                 Xform x = w.Then(aw);
@@ -529,11 +534,24 @@ static class Program
             }
             long mem0 = GC.GetTotalMemory(true);
             var watch = System.Diagnostics.Stopwatch.StartNew();
+            // 1.8 smooth hull, as ModuleAblativeDecal.Work: 1 = forced fit, auto = only round parts
+            SurfaceIndex.SmoothHullResult smooth = smoothMode == "1" || smoothMode == "auto"
+                ? SurfaceIndex.BuildSmoothHull(pos.ToArray(), tri.ToArray(), owner.ToArray(), 0, s.TankAxis, s.TankCenter, smoothMode == "1")
+                : null;
+            if (smooth != null) { pos = smooth.Pos.ToList(); tri = smooth.Tri.ToList(); owner = smooth.Owner.ToList(); }
+            if (smoothMode != "0") Console.WriteLine($"  smooth hull ({smoothMode}): {(smooth != null ? $"on, {smooth.Radius.Length} rings, r {smooth.Radius.Min():F3}..{smooth.Radius.Max():F3} m, {smooth.ProtrusionTri.Length / 3} protrusion tris" : "off (not round / too small)")}");
             var surface = new SurfaceIndex(pos.ToArray(), tri.ToArray(), Vector3.zero, reach, Mathf.Max(s.TileSize * 0.5f, 0.05f), Mathf.Clamp(s.TileSize * 0.4f, 0.02f, 0.3f), owner.ToArray());
             long indexMs = watch.ElapsedMilliseconds;
             var outlines = new List<TileOutline>();
             Dl = decal.Xform.InverseApply;
             TileResult r = TileBuilder.Build(surface, s, Vector3.zero, n, u, v, outlines);
+            if (smooth != null && r.OnSurface && r.TileCount > 0 && smooth.ProtrusionTri.Length > 0)
+            {
+                Vector4[] skinCuts = s.CutPlanes?.Select(c => c.w > 0 ? -c : c).ToArray();
+                PartTiles skin = TileBuilder.BuildVisualSkin(smooth.ProtrusionPos, smooth.ProtrusionTri, 0, s, n, skinCuts, Vector3.zero, u, v);
+                if (skin != null) r.Parts = r.Parts.Append(skin).ToArray();
+                Console.WriteLine($"  protrusion skin: {(skin != null ? skin.BinTriangles.Sum(b => b.Length) / 3 : 0)} tris wrapped");
+            }
             watch.Stop();
             if (str(null, "bake") is string bakeFile) // pre-made cover (DESIGN-v11): the tiles in the parent's part space
             {

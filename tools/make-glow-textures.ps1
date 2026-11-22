@@ -1,4 +1,4 @@
-﻿# Generates the glow (emission) atlases HexGlow/SquareGlow: same layout as make-tile-atlases.ps1 (4x4 cells), per tile a soft
+﻿# Generates the glow (emission) atlases {Hex,Square,Triangle}{,Ceramic}Glow: same layout as make-tile-atlases.ps1 (4x4 cells), per tile a soft
 # gradient from a warm white core to a dark orange rim, no noise (DESIGN-v11 M1). Deterministic.
 # The shader multiplies this with _EmissiveColor = glowRamp tint (medium: orange x 0.55, peak: white x 1.2).
 # -Preview <png>: also renders the three glow states (normal / medium / peak, 3x3 hex tiles each) from HexBlack + HexGlow.
@@ -24,18 +24,25 @@ public static class Glow
         return t * t * (3 - 2 * t);
     }
 
+    // shape: 0 = hex, 1 = square, 2 = triangle (upright equilateral, apex y = 18, base y = 238 in the 256 px cell, top-down;
+    // same geometry as make-tile-atlases.ps1). Triangle points are measured from its centroid (cell centre + 36.67 down).
+    public const double TriDy = 18 + 220.0 * 2 / 3 - 128, TriR = 220.0 / 3;
+
     // distance to the tile outline in the 256 px cell units of the tile atlases, and its value at the centre
-    static double Dist(bool hex, double x, double y, out double max)
+    static double Dist(int shape, double x, double y, out double max)
     {
+        if (shape == 2) { max = TriR; y -= TriDy; return TriR - Math.Max(y, Math.Abs(x) * 0.866 - y * 0.5); }
+        bool hex = shape == 0;
         max = hex ? 110.85 : 127.5;
         return hex ? 110.85 - Math.Max(Math.Abs(x), Math.Abs(x) * 0.5 + Math.Abs(y) * 0.866) : 127.5 - Math.Max(Math.Abs(x), Math.Abs(y));
     }
 
     // emission colour at cell point (x, y) (cell units, centre 0), cell factor f
-    public static double[] At(bool hex, double x, double y, double f)
+    public static double[] At(int shape, double x, double y, double f)
     {
         // rim zone from the outline distance, core from a mix with the round distance (no star-shaped contours)
-        double max, d = Dist(hex, x, y, out max), th = Math.Max(0, d / max), tr = Math.Max(0, 1 - Math.Sqrt(x * x + y * y) / max);
+        double max, d = Dist(shape, x, y, out max), yc = shape == 2 ? y - TriDy : y;
+        double th = Math.Max(0, d / max), tr = Math.Max(0, 1 - Math.Sqrt(x * x + yc * yc) / max);
         double e = Smooth(0, 0.1, th), c = Smooth(0.05, 0.8, 0.5 * th + 0.5 * tr);
         var o = new double[3];
         for (int k = 0; k < 3; k++) o[k] = f * (Edge[k] + (Rim[k] - Edge[k]) * e + (Core[k] - Rim[k]) * c);
@@ -55,7 +62,7 @@ public static class Glow
         }
     }
 
-    public static void Make(string path, bool hex, int size, int seed, bool ceramic = false)
+    public static void Make(string path, int shape, int size, int seed, bool ceramic = false)
     {
         var rnd = new Random(seed);
         int cell = size / Cells;
@@ -69,12 +76,12 @@ public static class Glow
                 for (int lx = 0; lx < cell; lx++)
                 {
                     double x = (lx + 0.5) * 256.0 / cell - 128, y = (ly + 0.5) * 256.0 / cell - 128;
-                    double[] o = At(hex, x, y, f);
-                    if (ceramic || !hex)
+                    double[] o = At(shape, x, y, f);
+                    if (ceramic || shape != 0)
                     {
                         // Soft asymmetric hot spot in the glaze. The rim stays cool on every cell.
-                        double max, d = Dist(hex, x, y, out max);
-                        double u = x / max, v = y / max;
+                        double max, d = Dist(shape, x, y, out max);
+                        double u = x / max, v = (shape == 2 ? y - TriDy : y) / max;
                         double field = 0.5 + 0.5 * Math.Cos(2.8*u + phase) * Math.Sin(3.4*v - phase);
                         double core = Smooth(0.02, ceramic ? 0.68 : 0.82, d / max) * (0.80 + 0.20 * field);
                         double rim = Smooth(0, 0.12, d / max);
@@ -134,7 +141,7 @@ public static class Glow
                         {
                             double cxp = q * W + (hex ? (r % 2) * W / 2 : 0), cyp = r * (hex ? 0.75 : 1) * H;
                             double x = (bx - cxp) / s, y = (by - cyp) / s, max;
-                            double d = Dist(hex, x, y, out max);
+                            double d = Dist(hex ? 0 : 1, x, y, out max);
                             if (d < 3) continue;          // outside the tile or in the joint (about 6 units wide)
                             int cell = cells[r, q], cx = cell % 4, cy = cell / 4;
                             int ax = Math.Min(aw - 1, (int)((cx * 256 + 128 + x) * aw / 1024.0)), ay = Math.Min(ah - 1, (int)((cy * 256 + 128 + y) * ah / 1024.0));
@@ -161,10 +168,13 @@ public static class Glow
     }
 }
 '@
-[Glow]::Make((Join-Path $OutDir 'HexGlow.png'), $true, 512, 61, $false)
-[Glow]::Make((Join-Path $OutDir 'SquareGlow.png'), $false, 512, 62, $false)
-[Glow]::Make((Join-Path $OutDir 'HexCeramicGlow.png'), $true, 512, 63, $true)
-[Glow]::Make((Join-Path $OutDir 'SquareCeramicGlow.png'), $false, 512, 64, $true)
+# shape: 0 hex, 1 square, 2 triangle
+[Glow]::Make((Join-Path $OutDir 'HexGlow.png'), 0, 512, 61, $false)
+[Glow]::Make((Join-Path $OutDir 'SquareGlow.png'), 1, 512, 62, $false)
+[Glow]::Make((Join-Path $OutDir 'HexCeramicGlow.png'), 0, 512, 63, $true)
+[Glow]::Make((Join-Path $OutDir 'SquareCeramicGlow.png'), 1, 512, 64, $true)
+[Glow]::Make((Join-Path $OutDir 'TriangleGlow.png'), 2, 512, 65, $false)
+[Glow]::Make((Join-Path $OutDir 'TriangleCeramicGlow.png'), 2, 512, 66, $true)
 "saved glow atlases to $OutDir"
 if ($Preview) {
     $dir = Split-Path -Parent $Preview

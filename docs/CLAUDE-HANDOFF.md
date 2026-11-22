@@ -3,7 +3,7 @@
 1.7.1: Maskenrand über `Fill` (überstehende Kacheln weg, Randstücke an der Kontur geschnitten), Kappe nur für kleine Dreiecke, `ShieldedPort` nur mit einem Stapelknoten, Klappen-/Winglet-Haut 150°, lokales Glühen (`TileGlow.LocalWeight`, Fugen über `KSP/Emissive/Diffuse`). Renders `preview/v15/`.
 
 
-Änderungen gegenüber 1.6.2 im [CHANGELOG](CHANGELOG.md), Renders in `preview/v14/` (`render.sh`). Kernpunkte im Code: `TileSettings.PatternedHull` ist entfernt, `RunSkin` läuft nur noch für Overlays mit `Skin` (Fahrwerk, Einlässe, Flossen/Klappen, Sockel des abgeschirmten Docking-Ports). `Snap` wickelt beim Quadrat über konvexe Kanten ab, `Claim` lässt Inselfluten nicht mehr zwischen fertige Kacheln. `ShieldedPort` (Modul und Vorschau) behandelt die Schutzklappen wie Lagerraumtüren. Cockpits mit `--bake-cover` neu gebacken (Maskenabdeckung 99,8–99,97 %). Offen im Spiel: Docking-Port-Animation, Glühen, Nähte aus der Nähe.
+Änderungen gegenüber 1.6.2 im [CHANGELOG](../CHANGELOG.md), Renders in `preview/v14/` (`render.sh`). Kernpunkte im Code: `TileSettings.PatternedHull` ist entfernt, `RunSkin` läuft nur noch für Overlays mit `Skin` (Fahrwerk, Einlässe, Flossen/Klappen, Sockel des abgeschirmten Docking-Ports). `Snap` wickelt beim Quadrat über konvexe Kanten ab, `Claim` lässt Inselfluten nicht mehr zwischen fertige Kacheln. `ShieldedPort` (Modul und Vorschau) behandelt die Schutzklappen wie Lagerraumtüren. Cockpits mit `--bake-cover` neu gebacken (Maskenabdeckung 99,8–99,97 %). Offen im Spiel: Docking-Port-Animation, Glühen, Nähte aus der Nähe.
 
 Der folgende Text beschreibt den Stand 1.6.0.
 
@@ -24,7 +24,7 @@ Der erste vollständige Selbsttest scheiterte auf einer ebenen Fläche bei Hex u
 
 ## Offline-Abnahme
 
-Release-Build von Plugin und Vorschau mit 0 Warnungen und 0 Fehlern. Der vollständige Selbsttest endet mit `SelfCheck OK`. Das [Testprotokoll](preview/v12/verification/selfcheck.log) enthält die einzelnen Prüfungen. Alle sechs erneut gebackenen Dateien stimmen per SHA-256 mit den ausgelieferten Cockpitnetzen überein.
+Release-Build von Plugin und Vorschau mit 0 Warnungen und 0 Fehlern. Der vollständige Selbsttest endet mit `SelfCheck OK`. Das [Testprotokoll](../preview/v12/verification/selfcheck.log) enthält die einzelnen Prüfungen. Alle sechs erneut gebackenen Dateien stimmen per SHA-256 mit den ausgelieferten Cockpitnetzen überein.
 
 Die folgenden Zahlen sind Flächenstichproben an den KSP-Modellen. Die Cockpitmessung prüft die sichtbare Fläche mindestens 2 cm innerhalb der Maske. Die Bilder und Konsolenprotokolle liegen je Szene unter `preview/v12/verification`.
 
@@ -63,4 +63,4 @@ foreach ($shape in 'Hex','Square') {
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/make-glow-textures.ps1 -VariantsDir preview/v12/glow
 ```
 
-Die Ordner `flight-tank-Hex`, `flight-tank-Square` und `last-flight` dokumentieren den tatsächlichen Spielstand. `tank-Hex` und `tank-Square` verwenden einen einzeln erzeugten Mk2-Kurztank. Die Übersichtsbilder stehen in [Geometrie](preview/v12/verification/overview.png) und [Glühen](preview/v12/glow/overview.png).
+Die Ordner `flight-tank-Hex`, `flight-tank-Square` und `last-flight` dokumentieren den tatsächlichen Spielstand. `tank-Hex` und `tank-Square` verwenden einen einzeln erzeugten Mk2-Kurztank. Die Übersichtsbilder stehen in [Geometrie](../preview/v12/verification/overview.png) und [Glühen](../preview/v12/glow/overview.png).

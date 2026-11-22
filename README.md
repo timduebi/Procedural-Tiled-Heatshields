@@ -4,14 +4,14 @@ Language: **English** | [Deutsch](README.de.md)
 
 AblatorDecals is a mod for Kerbal Space Program 1.12.5. The **Ablative Heat Tiles** part (`ablativeDecal`) attaches to the surface of a part like a sticker and places thin 3D thermal protection tiles directly onto its hull. Surface-attached landing gear, air intakes, and control surfaces on that part can receive their own tile shells, and tiles on moving parts animate with them. Patterns mimic Starship (hexagons) or Space Shuttle (squares). Thermally, the decal acts as an ablative heat shield: during reentry it absorbs convection heat from the covered parts and consumes Ablator, all while remaining a single part.
 
-Version 1.7.4 has been verified offline with the full self-test suite and the preview renderer against KSP part models; final in-game verification is pending. See [CHANGELOG.md](CHANGELOG.md) for version history and [CLAUDE-HANDOFF.md](CLAUDE-HANDOFF.md) for development handoff notes.
+Version 1.8.0 has been verified offline with the full self-test suite and the preview renderer against Stock and ReStock part models. See [CHANGELOG.md](CHANGELOG.md) for version history and [docs/CLAUDE-HANDOFF.md](docs/CLAUDE-HANDOFF.md) for development handoff notes.
 
 ## Installation
 
 1. Copy the `GameData/AblatorDecals` folder into your KSP installation's `GameData` directory.
-2. ModuleManager is not required. Optional: [B9PartSwitch](https://github.com/blowfishpro/B9PartSwitch) (with ModuleManager, both available via CKAN) replaces the built-in pattern and tile type selectors with color-swatch switchers; see [B9PartSwitch (optional)](#b9partswitch-optional).
+2. ModuleManager is not required. Optional patches are included for [B9PartSwitch](https://github.com/blowfishpro/B9PartSwitch) (color-swatch switchers), **Community Tech Tree** (`heatManagementSystems`), **Deadly Reentry**, **FAR**, and **VAB Organizer**.
 
-The part appears in the editor under the **Thermal** category (and in the Heat Shields subcategory if VAB Organizer is installed). In Science and Career modes, it unlocks alongside the Mk2 Cockpit (`supersonicFlight`).
+The part appears in the editor under the **Thermal** category (and in the Heat Shields subcategory if VAB Organizer is installed). In Science and Career modes, it unlocks alongside the Mk2 Cockpit (`supersonicFlight`, or `heatManagementSystems` with Community Tech Tree).
 
 ### Building from source
 
@@ -47,21 +47,26 @@ PAW layout (top to bottom):
 | Group | Setting | Options / Range | Default | Effect |
 |---|---|---|---|---|
 | Tiles | Pattern | Hexagons, Squares | Hexagons | Tile geometry and grid layout. |
-| Tiles | Tile type | Black, Plain ceramic | Black | Surface appearance. Texture is picked from Pattern + Tile type (Hexagons + Black = Starship, Squares + Black = Shuttle HRSI). White tiles were removed in 1.4; decals saved with White load as Black. |
+| Tiles | Tile type | Black, Plain ceramic, NASA White, Steel | Black | Surface appearance. Texture is picked from Pattern + Tile type (Black = Starship / Shuttle HRSI, NASA White = Shuttle LRSI, Steel = Starship stainless, Plain ceramic = continuous ceramic). |
 | Tiles | Tile size | 0.03 to 0.5 m | 0.1 m | Grid pitch including joint: flat-to-flat distance for hexagons, edge length for squares. |
 | Tiles | Pattern angle | -90 to 90 deg | 0 | Rotates the pattern around the decal normal. |
 | Tiles | Joint width | 0 to 0.02 m | 0 m | Width of joints between tiles. Existing saved decals retain their stored value. |
 | Tiles | Thickness (ablator) | 0.005 to 0.3 m | 0.025 m | Tile thickness. Determines total Ablator capacity (`covered area × thickness × 1000` units/m³). |
+| Tiles | Copy settings to all shields | Button | | Copies look, wrap, height, gap, weathering, and shedding settings to every other decal on the craft (preserving fixed sizes on pre-made cockpit covers). |
 | Area | Coverage | Whole part / Limit area | Whole part | **Whole part**: tiles the entire host part within Max wrap angle of the decal normal, cleanly trimmed at part seams. **Limit area**: uses Width and Height. Saves from before 1.3 load as Limit area. |
 | Area | Width | 0.2 to 60 m | 2 m | Footprint width (only in Limit area mode). |
 | Area | Height | 0.2 to 60 m | 2 m | Footprint height (only in Limit area mode). |
 | Area | Max wrap angle | 10 to 180 deg | 100 | How far tiles wrap around the hull (angle between surface normal and decal normal). |
 | Area | Covered height | 1 to 100 % (1% steps) | 100 % | Fraction of the part's extent along the decal normal, measured from the decal side (100% = full part; 50% on the side of an Mk3 tank = up to half height). Straight cut, combined with Max wrap angle (stricter wins). |
+| Area | Hull surface | Smooth cylinder / Exact mesh | Auto | Auto-enabled on round axisymmetric tanks/station modules (ReStock, ReStockPBR, SSPX, NFLV): bridges horizontal ribs smoothly and wraps protruding external pipes/ladders in a matching visual-only skin. Off on Mk2/Mk3/wings/hubs. |
 | Area | Unroll | Along the hull / Seen from the front | Along the hull | How Width and Height are measured: wrapped along the hull like a sticker, or projected straight from the front (useful for nose cones). |
 | Area | Edge | Whole tiles / Straight cut | Whole tiles | Behavior at the footprint boundary. |
 | Fine tuning | Texture | Per tile / Across the tiles | Per tile | Only with Plain ceramic: per-tile UV crop or one texture mapped across all tiles. |
 | Fine tuning | Texture scale | 0 to 20 m | 2 m | Only with Plain ceramic: width of one texture repeat. With "Across the tiles", 0 stretches the texture across the footprint. |
 | Fine tuning | Missing tiles | 0 to 20 % | 0 | Percentage of tiles omitted purely for visual wear. |
+| Fine tuning | Weathering | 0 to 100 % (5% steps) | 0 % | Base soot/char tint visible immediately in the editor and at launch (no mesh rebuild needed). |
+| Fine tuning | Reentry tile shedding | Enabled / Disabled | Off (Sandbox), On (Science/Career) | Under heavy reentry heating or low Ablator, sheds up to 25% of tiles in 5% steps. Engineers can repair shed tiles and refill Ablator on EVA (consumes 1 stock EVA Repair Kit in Career). |
+| Fine tuning | Keep hatches clear | Clear / Tile over | Clear (`Tile over` on `mk3CrewCabin`) | Controls whether `Airlock` hatches stay uncovered or are tiled over. |
 | Fine tuning | Shuffle tiles | Button | | Picks a new random seed for atlas cells and missing tiles (also updates symmetry counterparts). |
 
 ### Pattern and Tile Type
@@ -74,6 +79,8 @@ PAW layout (top to bottom):
 |---|---|---|
 | Black | `HexBlack` (Starship) | `SquareBlack` (Shuttle HRSI) |
 | Plain ceramic | `Ceramic` with `HexCeramicGlow` | `Ceramic` with `SquareCeramicGlow` |
+| NASA White | `HexWhite` | `SquareWhite` (Shuttle LRSI) |
+| Steel | `HexSteel` (Starship steel) | `SquareSteel` |
 
 Changing the pattern preserves the current tile size.
 
@@ -235,7 +242,7 @@ These fields belong to `MODULE { name = ModuleAblativeDecal }` (not shown in the
 | `cornerBendAngle` | `35` | Max smoothed surface bend angle (deg) tiles will cross. |
 | `faceBendAngle` | `60` | Max individual face bend angle (deg). |
 | `curvatureFactor` | `1` | Minimum bend radius (in tile sizes) tiles will follow. Higher is stricter. |
-| `maxTiles` | `40000` | Maximum tiles per decal (logs a warning if reached). |
+| `maxTiles` | `60000` | Maximum tiles per decal (logs a warning if reached). |
 | `colliderPatchSize` | `1` | Size (m) of box collider patches for editor clicking. |
 | `gearMargin` | `0.3` | Margin (m) around landing gear/wheels where tile colliders are omitted (tiles stay visible). |
 
@@ -266,15 +273,15 @@ This mod was verified offline via automated self-tests and the software preview 
 - **Control surfaces**: In flight, the moving flap receives its own rotating collider box, while editor click collider patches spanning the hinge remain in neutral pose.
 - **Skinned or animated parent meshes** are not supported (except retracted landing gear). Meshes marked non-readable (`isReadable = false`) are skipped with a log warning.
 - Tiles are flat and rigid: on tightly curved hulls they are individually trimmed, and small gaps may remain at extreme creases.
-- Parts exceeding `maxTiles` (default 40,000) stop adding tiles and log a warning.
-- In flight, tile meshes only rebuild on startup and vessel modification (staging/part loss).
+- Parts exceeding `maxTiles` (default 60,000) stop adding tiles and log a warning.
+- In flight, tile meshes only rebuild on startup, vessel modification (staging/part loss), reentry tile shedding, or Engineer EVA repair.
 - Thermal protection is an approximation tuned via `efficiency` and `unitsPerCubicMeter` rather than a duplicate of stock heat shield drag-cube occlusion.
-- **License:** No code or shaders were taken from Conformal Decals; all tile geometry is generated independently using stock KSP shaders. License selection is pending by the author.
+- **License:** Licensed under the [MIT License](LICENSE). No code or shaders were taken from Conformal Decals; all tile geometry is generated independently using stock KSP shaders.
 
 ## Files & Development
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — technical architecture and KSP API notes (German)
-- [DESIGN.md](DESIGN.md) — core specification (German)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — technical architecture and KSP API notes (German)
+- [docs/DESIGN.md](docs/DESIGN.md) — core specification (German)
 - [CHANGELOG.md](CHANGELOG.md) — release notes ([Deutsch](CHANGELOG.de.md))
 - Self-test suite: `dotnet run --project tests/SelfCheck` (ends with `SelfCheck OK`)
 - Offline software renderer: `tools/Preview` (renders `.craft` files and KSP `.mu` models to PNG)

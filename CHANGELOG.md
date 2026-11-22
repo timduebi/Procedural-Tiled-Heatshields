@@ -2,6 +2,20 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.8.0 (2026-11-22)
+
+- **New Tile Finishes (`NASA White` & `Steel`):** Added **White** (NASA LRSI off-white ceramic tiles, `HexWhite` / `SquareWhite`) and **Steel** (brushed stainless steel with subtle heat-tinted edges and specular sheen, `HexSteel` / `SquareSteel`) alongside **Black** and **Plain ceramic** in the PAW, Editor toolbar window, `Textures.cfg`, and `B9PartSwitch.cfg`.
+- **Automatic Smooth Cylinder & Visual Pipe Overlay for Round Parts (ReStock, ReStockPBR, SSPX, NFLV):** Cylindrical and conical tanks/station modules with molded horizontal stiffening ribs or external vertical fuel pipes/ladders/handrails now automatically fit a smooth 64-segment surface-of-revolution envelope (`Hull surface: Smooth cylinder / Exact mesh` toggle in **Area**, auto-enabled on axisymmetric hulls and auto-disabled on flat-bellied/non-round hulls like Mk2, Mk3, wings, and hubs). Horizontal ribs and weld grooves are smoothly bridged (zero white stripes), while protruding external pipes and ladders receive a purely visual, untiled, finish-matched conformal skin overlay (like landing gear & intakes — glows and chars with the shield, zero colliders/mass/cost).
+- **Round-Parts & Mod Compatibility:**
+  - **Service Bays & Cargo Bays (`service-tank-375` / Near Future Spacecraft, etc.):** Fixed attaching a decal directly onto a bay door showing a floating flat preview rectangle (`no usable surface`). Added automatic closed-vs-open door pose verification and support for articulated multi-segment folding doors (`DoorA..DoorE`).
+  - **TweakScale & B9PartSwitch Parent Mesh Watcher:** Automatically detects parent part scale changes (`TweakScale`) and mesh variant switches (`B9PartSwitch` on NFLV, SSPX, ReStock) and rebuilds the tile surface immediately.
+  - **5 m & 7.5 m Tanks (`ReStock`, `ReStockPBR`, `NFLV`):** Expanded whole-part unrolled footprint to $\pi \cdot R_{\text{far}}$ so short wide 5 m / 7.5 m tanks wrap full 180° without clipping, raised default `maxTiles` from `40,000` to `60,000`, and enabled bounded whole-part island flooding (`FloodIslands`) in Exact-mesh mode.
+- **Mk3 Passenger Module (`mk3CrewCabin`) & Hatch Toggle:** Added **Keep hatches clear** (`keepHatches`) toggle in **Fine tuning** — defaults to **Tile over** on `mk3CrewCabin` (so its bottom hatch/door and windows are tiled cleanly) and **Clear** on all other parts.
+- **Editor Quality of Life:** Added one-click **Presets** (*Starship*, *Shuttle*, *Shuttle White*, *Delta Steel*) and **Highlight all heat shields** toggle to the Editor toolbar window (`DecalWindow`), plus **Copy settings to all shields** right in the PAW.
+- **Weathering, Directional Soot Gradient, Thermal Status & Warnings:** Added **Weathering** slider (0–100%, live re-tint without mesh rebuild), per-bin directional reentry charring (windward tiles char up to ~2× darker than leeward ones), flight **Shield status** readout (*Nominal / Marginal / Ablator low! / Depleted!*), and one-shot screen warnings at <10% and 0% Ablator.
+- **Optional Reentry Tile Shedding & Engineer EVA Repair:** Added **Reentry tile shedding** toggle (defaults **Disabled** in Sandbox, **Enabled** in Science & Career) that sheds up to 25% of tiles in 5% steps under extreme heating or low Ablator. Engineers on EVA can **Repair heat tiles (EVA)** to restore shed tiles and refill Ablator (free in Sandbox & Science; consumes 1 stock `evaRepairKit` in Career).
+- **Mod Compatibility Patches & Release Tooling:** Added optional ModuleManager patches for **Community Tech Tree** (`heatManagementSystems`), **Deadly Reentry**, and **FAR** (`GeometryPartModule` exclusion). Added MIT `LICENSE`, moved internal design docs into `docs/`, and added `tools/package-release.ps1` for clean CKAN/Linux-compatible release ZIPs.
+
 ## 1.7.4 (2026-11-21)
 
 - **Smooth black untiled ceramic on Mk1 & Mk2 cockpit nose tip and sides (`ceramicSideDeg`):** Mk2 (`58°`) and Mk1 (`50°`) cockpits now render a sleek, mask-clipped smooth matte black ceramic shell over the nose tip and both sides/chines (with per-normal reentry glow bins and flush stack-seam cuts), while keeping real 3D individual Hex/Square tiles on the belly and the upper nose ahead of the windshield. Mk3 remains 100% real 3D tiles. All Mk1 and Mk2 pre-baked cockpit covers rebaked.
@@ -63,7 +77,7 @@ Following the 1.6.0/1.6.1 playtest. Verified offline (0 build warnings/errors, S
 - Continuous tiled shells for landing gear and air intakes; landing light reflector face stays clear. Flaps follow the covered side.
 - Gap filling at cockpit masks and Mk2 tanks, plus dark joint bed closing tank sides up to the wrap limit for both patterns.
 - Updated glow textures for Square/Black, Hex/Ceramic, and Square/Ceramic. Reentry summary logs peak tile temp and peak intensity.
-- Measurements and reproduction steps in [CLAUDE-HANDOFF.md](CLAUDE-HANDOFF.md).
+- Measurements and reproduction steps in [docs/CLAUDE-HANDOFF.md](docs/CLAUDE-HANDOFF.md).
 
 ## 1.5.0 (2026-11-19)
 

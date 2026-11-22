@@ -1,4 +1,5 @@
-# Generates HexBlack/SquareBlack/SquareWhite/HexWhite atlases (4x4 cells of 256 px, alpha = gloss). Deterministic.
+# Generates the tile atlases {Hex,Square,Triangle} x {Black,White,Steel} (4x4 cells of 256 px, 1024 px, alpha = gloss). Deterministic.
+# Triangle cells: upright equilateral triangle, apex y=18, base y=238, centroid (128, 164.7) top-down = Unity UV (0.5, 0.357).
 param([string]$OutDir)
 if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot '..\GameData\AblatorDecals\Textures' }
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Force $OutDir | Out-Null }
@@ -75,10 +76,16 @@ public static class Atlas
         return m;
     }
 
-    // kind: 0 = hex black, 1 = square black, 2 = square white, 3 = hex white (white style, hex cells)
-    public static void Make(string path, int kind, int seed)
+    // Triangle cell geometry (top-down px): apex (128, 18), base y = 238, centroid y = 18 + 2/3 * 220, inradius 220 / 3.
+    public const double TriCy = 18 + 220.0 * 2 / 3, TriR = 220.0 / 3;
+
+    // shape: 0 = hex, 1 = square, 2 = triangle; finish: 0 = black, 1 = white (Shuttle LRSI), 2 = steel.
+    // "kind" keeps the pre-1.8 styles (and random draw order) so HexBlack/SquareBlack/SquareWhite/HexWhite stay byte-identical:
+    // 0 = Starship black (hex, triangle), 1 = Shuttle HRSI black (square), 2 = white, 4 = steel.
+    public static void Make(string path, int shape, int finish, int seed)
     {
-        bool hex = kind == 0 || kind == 3, white = kind >= 2;
+        int kind = finish == 1 ? 2 : finish == 2 ? 4 : shape == 1 ? 1 : 0;
+        bool hex = shape == 0, tri = shape == 2, white = finish == 1, steel = finish == 2;
         Random rnd = new Random(seed);
         double[] fac = new double[16];
         int[] perm = Shuffled(rnd, 16);
@@ -119,15 +126,18 @@ public static class Atlas
                 sx1[i] = sx0[i] + Math.Cos(ang) * len; sy1[i] = sy0[i] + Math.Sin(ang) * len;
             }
             // part number (hex: further in, so it stays inside the hexagon; same number of random draws)
-            int tx = hex ? 70 + rnd.Next(0, 20) : 22 + rnd.Next(0, 30), ty = hex ? 132 + rnd.Next(0, 26) : 150 + rnd.Next(0, 40);
+            int tx = hex ? 70 + rnd.Next(0, 20) : tri ? 72 + rnd.Next(0, 20) : 22 + rnd.Next(0, 30);
+            int ty = hex ? 132 + rnd.Next(0, 26) : tri ? 168 + rnd.Next(0, 22) : 150 + rnd.Next(0, 40);
             double[,] mask = TextMask(rnd, 110, 30, font);
 
             for (int ly = 0; ly < Cell; ly++)
             for (int lx = 0; lx < Cell; lx++)
             {
                 double x = lx - 127.5, y = ly - 127.5;
+                double ty0 = ly - TriCy;
                 double d = hex
                     ? 110.85 - Math.Max(Math.Abs(x), Math.Abs(x) * 0.5 + Math.Abs(y) * 0.866)
+                    : tri ? TriR - Math.Max(ty0, Math.Abs(x) * 0.866 - ty0 * 0.5)
                     : 127.5 - Math.Max(Math.Abs(x), Math.Abs(y));
                 int ex = Math.Min(Math.Min(lx, ly), Math.Min(Cell - 1 - lx, Cell - 1 - ly));
                 double n1 = Noise(lx / 40.0, ly / 40.0, cs) * 0.5 + Noise(lx / 16.0, ly / 16.0, cs + 1) * 0.3 + Noise(lx / 6.0, ly / 6.0, cs + 2) * 0.2;
@@ -157,6 +167,20 @@ public static class Atlas
                     if (odd[c]) alpha -= 0.15;
                     double gg = Lerp(body, saum, w);
                     r = gg * (1 + tint); g = gg; b = gg * (1 - tint);
+                }
+                else if (steel)
+                {
+                    // brushed stainless: streaks along x, per-tile brightness, soft heat tint (straw -> blue) towards the joint
+                    double brush = Noise(lx / 90.0, ly / 1.6, cs + 8) * 0.6 + Noise(lx / 30.0, ly / 0.8, cs + 9) * 0.4;
+                    body = (0.52 + 0.14 * f) * (1 + (brush - 0.5) * 0.18 + (n1 - 0.5) * 0.06 + grain * 0.03);
+                    saum = body * 0.42 + (n2 - 0.5) * 0.03;
+                    alpha = 0.62 + 0.22 * brush + 0.08 * (n2 - 0.5);
+                    double gg = Lerp(body, saum, w);
+                    double heat = Smooth(0.35, 0.9, Noise(lx / 70.0, ly / 70.0, cs + 10)) * (0.4 + 0.6 * f) * 0.5;
+                    double edge = Smooth(18, 2, d) * (1 - w);
+                    r = gg * (1 + 0.10 * heat - 0.06 * edge + tint);
+                    g = gg * (1 + 0.04 * heat - 0.02 * edge);
+                    b = gg * (1 - 0.08 * heat + 0.09 * edge - tint);
                 }
                 else
                 {
@@ -193,7 +217,7 @@ public static class Atlas
                     }
                     if (hit > 0)
                     {
-                        double tone = white ? -0.22 : (kind == 0 ? 0.12 : 0.1);
+                        double tone = white ? -0.22 : steel ? 0.14 : (kind == 0 ? 0.12 : 0.1);
                         r += tone * hit; g += tone * hit; b += tone * hit;
                         alpha += white ? 0.05 * hit : -0.1 * hit;
                     }
@@ -230,8 +254,14 @@ public static class Atlas
     }
 }
 '@
-[Atlas]::Make((Join-Path $OutDir 'HexBlack.png'), 0, 11)
-[Atlas]::Make((Join-Path $OutDir 'SquareBlack.png'), 1, 22)
-[Atlas]::Make((Join-Path $OutDir 'SquareWhite.png'), 2, 33)
-[Atlas]::Make((Join-Path $OutDir 'HexWhite.png'), 3, 44)
+# shape: 0 hex, 1 square, 2 triangle; finish: 0 black, 1 white, 2 steel
+[Atlas]::Make((Join-Path $OutDir 'HexBlack.png'), 0, 0, 11)
+[Atlas]::Make((Join-Path $OutDir 'SquareBlack.png'), 1, 0, 22)
+[Atlas]::Make((Join-Path $OutDir 'SquareWhite.png'), 1, 1, 33)
+[Atlas]::Make((Join-Path $OutDir 'HexWhite.png'), 0, 1, 44)
+[Atlas]::Make((Join-Path $OutDir 'TriangleBlack.png'), 2, 0, 55)
+[Atlas]::Make((Join-Path $OutDir 'TriangleWhite.png'), 2, 1, 66)
+[Atlas]::Make((Join-Path $OutDir 'HexSteel.png'), 0, 2, 77)
+[Atlas]::Make((Join-Path $OutDir 'SquareSteel.png'), 1, 2, 88)
+[Atlas]::Make((Join-Path $OutDir 'TriangleSteel.png'), 2, 2, 99)
 "saved atlases to $OutDir"

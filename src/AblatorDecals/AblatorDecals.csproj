@@ -3,9 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <LangVersion>8.0</LangVersion>
-    <Version>1.7.4.0</Version>
-    <AssemblyVersion>1.7.4.0</AssemblyVersion>
-    <FileVersion>1.7.4.0</FileVersion>
+    <Version>1.8.0.0</Version>
+    <AssemblyVersion>1.8.0.0</AssemblyVersion>
+    <FileVersion>1.8.0.0</FileVersion>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <!-- Override with: dotnet build -p:KSPDir="C:\path\to\KSP" -->
     <KSPDir Condition="'$(KSPDir)' == ''">F:\Benutzer\Dokumente\science test</KSPDir>

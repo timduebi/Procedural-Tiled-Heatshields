@@ -298,6 +298,226 @@ namespace AblatorDecals
 
         private static long EdgeKey(int a, int b) => a < b ? ((long)a << 32) | (uint)b : ((long)b << 32) | (uint)a;
 
+        // 1.8: smooth revolution hull (see BuildSmoothHull). Pos/Tri/Owner: the whole soup with targetOwner's side replaced;
+        // ProtrusionPos/Tri: targetOwner triangles standing out of the envelope (pipes, ladders, brackets), for a visual skin.
+        public sealed class SmoothHullResult
+        {
+            public Vector3[] Pos; public int[] Tri; public int[] Owner;
+            public Vector3[] ProtrusionPos; public int[] ProtrusionTri;
+            public float[] SliceY, Radius; // envelope profile (along axis from center), for tests and the preview
+        }
+
+        // 1.8: axisymmetric envelope of targetOwner's side faces (tanks, station modules): per 8 cm slice the median radius over 36
+        // sectors, grooves closed, ridges (stiffening rings) ramped at <= 19 deg, revolved with 64 segments. Null when the part is
+        // not round (Mk2/Mk3, boxes, wings, hubs) unless force, or too small. Other owners are copied verbatim; flat target faces
+        // at the ends (stack caps, dome tops) too.
+        public static SmoothHullResult BuildSmoothHull(Vector3[] pos, int[] tri, int[] owner, int targetOwner, Vector3 axis, Vector3 center, bool force = false)
+        {
+            if (pos == null || tri == null || axis.sqrMagnitude < 1e-8f) return null;
+            axis = axis.normalized;
+            Vector3 e1 = Vector3.Cross(axis, Math.Abs(axis.x) < 0.9f ? Vector3.right : Vector3.up).normalized;
+            Vector3 e2 = Vector3.Cross(axis, e1);
+            int count = tri.Length / 3;
+            int Own(int t) => owner != null && t < owner.Length ? owner[t] : 0;
+            float Y(Vector3 p) => Vector3.Dot(p - center, axis);
+            float R(Vector3 p) { Vector3 d = p - center; float x = Vector3.Dot(d, e1), z = Vector3.Dot(d, e2); return Mathf.Sqrt(x * x + z * z); }
+
+            var side = new List<int>();
+            float yMin = float.MaxValue, yMax = float.MinValue;
+            for (int t = 0; t < count; t++)
+            {
+                if (Own(t) != targetOwner) continue;
+                Vector3 a = pos[tri[3 * t]], b = pos[tri[3 * t + 1]], c = pos[tri[3 * t + 2]];
+                Vector3 fn = Vector3.Cross(b - a, c - a);
+                float len = fn.magnitude;
+                if (len < 1e-12f || Math.Abs(Vector3.Dot(fn / len, axis)) > 0.92f) continue;
+                side.Add(t);
+                yMin = Math.Min(yMin, Math.Min(Y(a), Math.Min(Y(b), Y(c))));
+                yMax = Math.Max(yMax, Math.Max(Y(a), Math.Max(Y(b), Y(c))));
+            }
+            if (side.Count == 0 || yMax - yMin < 0.25f) return null;
+
+            int ny = Mathf.Clamp(Mathf.CeilToInt((yMax - yMin) / 0.08f) + 1, 8, 160);
+            const int sectors = 36;
+            float s0 = yMin + 0.002f, s1 = yMax - 0.002f, ds = (s1 - s0) / (ny - 1);
+            var sliceY = new float[ny];
+            for (int i = 0; i < ny; i++) sliceY[i] = s0 + i * ds;
+            var secMax = new float[ny, sectors];
+            void Sample(int i, Vector3 p)
+            {
+                Vector3 d = p - center;
+                float x = Vector3.Dot(d, e1), z = Vector3.Dot(d, e2), r = Mathf.Sqrt(x * x + z * z);
+                if (r < 1e-6f) return;
+                int sec = Math.Min(sectors - 1, Math.Max(0, (int)((Math.Atan2(z, x) + Math.PI) / (2 * Math.PI) * sectors)));
+                secMax[i, sec] = Math.Max(secMax[i, sec], r);
+            }
+            var corner = new Vector3[3];
+            var cy = new float[3];
+            foreach (int t in side)
+            {
+                for (int k = 0; k < 3; k++) { corner[k] = pos[tri[3 * t + k]]; cy[k] = Y(corner[k]); }
+                float lo = Math.Min(cy[0], Math.Min(cy[1], cy[2])), hi = Math.Max(cy[0], Math.Max(cy[1], cy[2]));
+                int i0 = Math.Max(0, Mathf.CeilToInt((lo - s0) / ds)), i1 = Math.Min(ny - 1, Mathf.FloorToInt((hi - s0) / ds));
+                for (int i = i0; i <= i1; i++)
+                {
+                    float y = sliceY[i];
+                    Vector3 p0 = default, p1 = default;
+                    int found = 0;
+                    for (int k = 0; k < 3 && found < 2; k++)
+                    {
+                        int k2 = (k + 1) % 3;
+                        float ya = cy[k], yb = cy[k2];
+                        if ((ya - y) * (yb - y) > 0 || ya == yb) continue;
+                        Vector3 q = Vector3.Lerp(corner[k], corner[k2], (y - ya) / (yb - ya));
+                        if (found == 0) p0 = q; else p1 = q;
+                        found++;
+                    }
+                    if (found == 0) continue;
+                    if (found == 1) p1 = p0;
+                    Sample(i, p0); Sample(i, 0.5f * (p0 + p1)); Sample(i, p1);
+                }
+            }
+
+            // per slice: radius quantiles over the populated sectors (>= 24 of 36 for a usable slice)
+            var populated = new bool[ny];
+            var rawR = new float[ny];
+            int populatedSlices = 0, roundSlices = 0;
+            var radii = new List<float>(sectors);
+            for (int i = 0; i < ny; i++)
+            {
+                radii.Clear();
+                for (int k = 0; k < sectors; k++) if (secMax[i, k] > 0) radii.Add(secMax[i, k]);
+                if (radii.Count < 24) continue;
+                populated[i] = true;
+                populatedSlices++;
+                radii.Sort();
+                float Q(float f) => radii[Mathf.Clamp(Mathf.RoundToInt(f * (radii.Count - 1)), 0, radii.Count - 1)];
+                float r05 = Q(0.05f), r10 = Q(0.10f), r20 = Q(0.2f), r25 = Q(0.25f), r50 = Q(0.5f), r75 = Q(0.75f), r80 = Q(0.8f);
+                rawR[i] = r50;
+                // r05/r10 reject flat-bellied hulls (e.g. Mk3: flat bottom sits ~13% inside the top radius), while
+                // external pipes/ladders only push high quantiles outward and leave low quantiles at the cylinder radius.
+                if (r50 >= 0.20f && r05 >= r50 * 0.955f && r10 >= r50 * 0.965f &&
+                    (r75 - r25) / r50 <= 0.045f && (r80 - r20) / r50 <= 0.065f) roundSlices++;
+            }
+            if (populatedSlices < 0.70f * ny) return null;
+            if (!force && roundSlices < 0.70f * populatedSlices) return null;
+            // gaps: linear between populated neighbours, the nearest one at the ends
+            for (int i = 0; i < ny; i++)
+            {
+                if (populated[i]) continue;
+                int a = i - 1, b = i + 1;
+                while (a >= 0 && !populated[a]) a--;
+                while (b < ny && !populated[b]) b++;
+                rawR[i] = a < 0 ? rawR[b] : b >= ny ? rawR[a] : Mathf.Lerp(rawR[a], rawR[b], (float)(i - a) / (b - a));
+            }
+            float maxR = 0;
+            for (int i = 0; i < ny; i++) maxR = Math.Max(maxR, rawR[i]);
+            if (maxR < 0.15f) return null;
+
+            // profile: closing bridges grooves narrower than ~16 cm, then a <= 19 deg ramp (0.35) either side of every ridge
+            float dy = (yMax - yMin) / (ny - 1);
+            int w = Math.Max(1, Mathf.RoundToInt(0.08f / dy));
+            var dil = new float[ny];
+            var closedR = new float[ny];
+            for (int i = 0; i < ny; i++)
+            {
+                float m = 0;
+                for (int j = Math.Max(0, i - w); j <= Math.Min(ny - 1, i + w); j++) m = Math.Max(m, rawR[j]);
+                dil[i] = m;
+            }
+            for (int i = 0; i < ny; i++)
+            {
+                float m = float.MaxValue;
+                for (int j = Math.Max(0, i - w); j <= Math.Min(ny - 1, i + w); j++) m = Math.Min(m, dil[j]);
+                closedR[i] = m;
+            }
+            int kr = Math.Max(2, Mathf.RoundToInt(0.20f / dy));
+            var envR = (float[])closedR.Clone();
+            for (int i = 0; i < ny; i++)
+            {
+                if (!(closedR[i] > closedR[Math.Max(0, i - kr)] + 0.003f && closedR[i] > closedR[Math.Min(ny - 1, i + kr)] + 0.003f)) continue;
+                for (int j = 0; j < ny; j++) envR[j] = Math.Max(envR[j], closedR[i] - Math.Abs(sliceY[j] - sliceY[i]) * 0.35f);
+            }
+            for (int i = 0; i < ny; i++) envR[i] = Math.Max(envR[i], rawR[i]);
+
+            // revolution mesh, ring i at yMin..yMax
+            const int seg = 64;
+            var outPos = new List<Vector3>(ny * seg + pos.Length);
+            var outTri = new List<int>();
+            var outOwner = new List<int>();
+            var ringY = new float[ny];
+            for (int i = 0; i < ny; i++) ringY[i] = i == 0 ? yMin : i == ny - 1 ? yMax : sliceY[i];
+            var dirs = new Vector3[seg];
+            for (int j = 0; j < seg; j++)
+            {
+                float ang = 2 * Mathf.PI * j / seg;
+                dirs[j] = e1 * Mathf.Cos(ang) + e2 * Mathf.Sin(ang);
+            }
+            for (int i = 0; i < ny; i++)
+                for (int j = 0; j < seg; j++) outPos.Add(center + axis * ringY[i] + dirs[j] * envR[i]);
+            // winding picked once on the widest ring: front faces (Unity: Cross(b - a, c - a)) point radially out
+            int wi = 0;
+            for (int i = 1; i < ny - 1; i++) if (envR[i] > envR[wi]) wi = i;
+            if (wi >= ny - 1) wi = ny - 2;
+            Vector3 ta = outPos[wi * seg], tb = outPos[wi * seg + 1], tc = outPos[(wi + 1) * seg + 1];
+            bool flip = Vector3.Dot(Vector3.Cross(tb - ta, tc - ta), dirs[0] + dirs[1]) <= 0;
+            for (int i = 0; i + 1 < ny; i++)
+                for (int j = 0; j < seg; j++)
+                {
+                    int a = i * seg + j, b = i * seg + (j + 1) % seg, c = (i + 1) * seg + (j + 1) % seg, d = (i + 1) * seg + j;
+                    if (flip) outTri.AddRange(new[] { a, c, b, a, d, c });
+                    else outTri.AddRange(new[] { a, b, c, a, c, d });
+                    outOwner.Add(targetOwner); outOwner.Add(targetOwner);
+                }
+
+            float Env(float y)
+            {
+                float f = (y - ringY[0]) / Math.Max(dy, 1e-6f);
+                if (f <= 0) return envR[0];
+                if (f >= ny - 1) return envR[ny - 1];
+                int i = (int)f;
+                return Mathf.Lerp(envR[i], envR[i + 1], f - i);
+            }
+            int baseIndex = outPos.Count;
+            outPos.AddRange(pos); // ponytail: whole source array appended, unused corners just sit there
+            var protPos = new List<Vector3>();
+            var protTri = new List<int>();
+            for (int t = 0; t < count; t++)
+            {
+                int ia = tri[3 * t], ib = tri[3 * t + 1], ic = tri[3 * t + 2];
+                Vector3 a = pos[ia], b = pos[ib], c = pos[ic];
+                if (Own(t) != targetOwner)
+                {
+                    outTri.Add(baseIndex + ia); outTri.Add(baseIndex + ib); outTri.Add(baseIndex + ic);
+                    outOwner.Add(Own(t));
+                    continue;
+                }
+                Vector3 m = (a + b + c) / 3;
+                float ex = Math.Max(R(a) - Env(Y(a)), Math.Max(R(b) - Env(Y(b)), R(c) - Env(Y(c))));
+                if (ex > 0.015f && R(m) - Env(Y(m)) > 0.008f)
+                {
+                    int p0 = protPos.Count;
+                    protPos.Add(a); protPos.Add(b); protPos.Add(c);
+                    protTri.Add(p0); protTri.Add(p0 + 1); protTri.Add(p0 + 2);
+                    continue;
+                }
+                // flat faces at the ends stay (stack caps, dome tops); flanks of rings in between are inside the envelope
+                Vector3 fn = Vector3.Cross(b - a, c - a);
+                float ym = Y(m);
+                if (fn.sqrMagnitude > 1e-24f && Math.Abs(Vector3.Dot(fn.normalized, axis)) > 0.92f && (ym < yMin + 0.01f || ym > yMax - 0.01f))
+                {
+                    outTri.Add(baseIndex + ia); outTri.Add(baseIndex + ib); outTri.Add(baseIndex + ic);
+                    outOwner.Add(targetOwner);
+                }
+            }
+            return new SmoothHullResult
+            {
+                Pos = outPos.ToArray(), Tri = outTri.ToArray(), Owner = outOwner.ToArray(),
+                ProtrusionPos = protPos.ToArray(), ProtrusionTri = protTri.ToArray(),
+                SliceY = ringY, Radius = envR
+            };
+        }
+
         // Smoothed normal for a hit made with smooth = false.
         public Vector3 Smooth(SurfaceHit h) => SmoothAt(h.P, h.Triangle);
 

@@ -26,7 +26,7 @@ namespace AblatorDecals
         public bool AtlasRandomRotation;
         public float TextureScale = 2;    // m per repeat (Window/Across; 0 with Across = stretch over footprint)
         public float TextureAspect = 1;   // texture height / width
-        public int MaxTiles = 40000, MaxBins = 16;
+        public int MaxTiles = 60000, MaxBins = 16;
         public float BinAngleDeg = 20;
         public float ColliderPatchSize = 1; public int MaxColliders = 256;
         public int Seed;                  // per-decal salt for all random choices
@@ -311,7 +311,7 @@ namespace AblatorDecals
             List<SurfaceIndex.ShellTri> shell = CapShell();
             Flood(new Walker { P = h0.P, N = h0.N, U = u0, F = h0.FaceN }, 0, 0);
             FloodMissedBodies();
-            if (S.Regions != null && S.Regions.Length > 0) FloodIslands();
+            if ((S.Regions != null && S.Regions.Length > 0) || (!S.LimitedTank && !HasClip && !S.Overlay && S.TankAxis.sqrMagnitude > 0.5f)) FloodIslands(); // 1.8: whole part needs the axis (no stack caps)
             return Finish(result, outlines, shell);
         }
 
@@ -728,11 +728,16 @@ namespace AblatorDecals
         private void FloodIslands()
         {
             islandFlood = true;
+            // 1.8 whole part (no regions): side faces of the start body the main flood missed behind a ridge (360 deg ribs);
+            // centroids only, no stack caps, no thin edges (Thin is checked when a spot is picked, raycasts are dear)
+            bool whole = S.Regions == null || S.Regions.Length == 0;
+            Vector3 axis = S.TankAxis.sqrMagnitude > 0.5f ? S.TankAxis.normalized : Vector3.zero;
             var spots = new List<(Vector3 q, Vector3 n)>();
             for (int k = 0; k < surface.TriangleSlots; k++)
             {
                 if (!surface.Triangle(k, out Vector3 a, out Vector3 b, out Vector3 c, out Vector3 n, out int o) || !wrapIn[k] || shellTris != null && shellTris.Contains(k)) continue;
-                foreach (Vector3 q in new[] { (a + b + c) / 3, (a + b) / 2, (b + c) / 2, (c + a) / 2 })
+                if (whole && (o != startBody || axis != Vector3.zero && Math.Abs(Vector3.Dot(n, axis)) > 0.92f || !Inside((a + b + c) / 3, 0))) continue;
+                foreach (Vector3 q in whole ? new[] { (a + b + c) / 3 } : new[] { (a + b + c) / 3, (a + b) / 2, (b + c) / 2, (c + a) / 2 })
                     if (ClipDist(q) < -0.3f * s && !InKeepOut(q) && !Enclosed(q, n)) spots.Add((q, n));
             }
             for (int round = 0; round < 64 && spots.Count > 0 && !hitLimit; round++)
@@ -742,6 +747,7 @@ namespace AblatorDecals
                 var (q0, n0) = spots[0];
                 spots.RemoveAt(0);
                 if (!surface.Closest(q0, 0.05f, n0, 0.3f, out SurfaceHit h) || Obstacle(h.Owner) || !wrapIn[h.Triangle]) continue;
+                if (whole && (h.Owner != startBody || Thin(q0, n0, h.Owner))) continue;
                 Vector3 u = Tangent(decalU, h.N);
                 if (u == Vector3.zero) u = Tangent(decalV, h.N);
                 if (u == Vector3.zero) continue;
@@ -798,6 +804,117 @@ namespace AblatorDecals
             BinAngleDeg = Math.Max(m.BinAngleDeg, 24f), ColliderPatchSize = m.ColliderPatchSize, MaxColliders = m.MaxColliders, Seed = m.Seed,
             Unrolled = true, Overlay = true
         };
+
+        // 1.8: visual-only skin over hull bits standing out of a smooth hull (SurfaceIndex.BuildSmoothHull: pipes, ladders, brackets):
+        // the faces on the decal's side (wrap, cuts, keep-outs, limited footprint) welded at 0.5 mm, lifted along the welded normals,
+        // with untiled UVs (atlas: inside cell 0,0, no joints). No mass, cost, ablator, colliders: CoveredArea 0, no area vectors,
+        // token bin areas (glow only). cuts: already turned so the decal's spot is on their kept side. Null if nothing is kept.
+        public static PartTiles BuildVisualSkin(Vector3[] pos, int[] tri, int owner, TileSettings s, Vector3 decalN, Vector4[] cuts,
+            Vector3 origin = default, Vector3 decalU = default, Vector3 decalV = default)
+        {
+            if (pos == null || tri == null || tri.Length < 3) return null;
+            float cosWrap = Mathf.Cos(s.MaxWrapDeg * Mathf.Deg2Rad);
+            Vector3 axis = s.TankAxis.sqrMagnitude > 0.5f ? s.TankAxis.normalized : Vector3.zero;
+            bool InBox(Vector3 p)
+            {
+                if (s.KeepOut == null) return false;
+                for (int i = 0; i + 3 < s.KeepOut.Length; i += 4)
+                {
+                    bool inside = true;
+                    for (int k = 1; k <= 3 && inside; k++)
+                    {
+                        Vector3 a = s.KeepOut[i + k];
+                        inside = Math.Abs(Vector3.Dot(p - s.KeepOut[i], a)) <= a.sqrMagnitude;
+                    }
+                    if (inside) return true;
+                }
+                return false;
+            }
+            bool limit = s.LimitedTank && decalU.sqrMagnitude > 0.5f && decalV.sqrMagnitude > 0.5f;
+            var keep = new List<int>();
+            var weld = new Dictionary<(int, int, int), int>();
+            var vn = new List<Vector3>();
+            var ids = new List<int>();
+            int Weld(Vector3 p, Vector3 n)
+            {
+                var key = (Mathf.RoundToInt(p.x * 2000), Mathf.RoundToInt(p.y * 2000), Mathf.RoundToInt(p.z * 2000));
+                if (!weld.TryGetValue(key, out int id)) { weld[key] = id = vn.Count; vn.Add(Vector3.zero); }
+                vn[id] += n;
+                return id;
+            }
+            for (int t = 0; t + 2 < tri.Length; t += 3)
+            {
+                Vector3 a = pos[tri[t]], b = pos[tri[t + 1]], c = pos[tri[t + 2]];
+                Vector3 an = Vector3.Cross(b - a, c - a);
+                if (an.sqrMagnitude < 1e-16f) continue;
+                Vector3 fn = an.normalized, mid = (a + b + c) / 3;
+                Vector3 rad = axis != Vector3.zero ? Vector3.ProjectOnPlane(mid - s.TankCenter, axis) : Vector3.zero;
+                rad = rad.sqrMagnitude > 1e-10f ? rad.normalized : fn;
+                if (Vector3.Dot(rad, decalN) < cosWrap || Vector3.Dot(fn, rad) <= -0.6f) continue;
+                bool cut = false;
+                if (cuts != null) foreach (Vector4 cp in cuts) if (cp.x * mid.x + cp.y * mid.y + cp.z * mid.z + cp.w > 0.005f) { cut = true; break; }
+                if (cut || InBox(mid)) continue;
+                if (limit && (Math.Abs(Vector3.Dot(mid - origin, decalU)) > s.Width / 2 || Math.Abs(Vector3.Dot(mid - origin, decalV)) > s.Height / 2)) continue;
+                keep.Add(t);
+                ids.Add(Weld(a, an)); ids.Add(Weld(b, an)); ids.Add(Weld(c, an));
+            }
+            if (keep.Count == 0) return null;
+            for (int i = 0; i < vn.Count; i++) vn[i] = vn[i].sqrMagnitude > 1e-20f ? vn[i].normalized : decalN;
+            float lift = s.SurfaceOffset + Mathf.Min(s.Thickness, 0.006f);
+            float PingPong(float x) { float f = x - 2 * Mathf.Floor(x / 2); return f > 1 ? 2 - f : f; }
+            bool atlas = s.UvMode == UvMode.Atlas;
+            int cols = Math.Max(1, s.AtlasCols), rows = Math.Max(1, s.AtlasRows);
+            float scale = atlas ? 1f / Math.Max(s.TileSize, 0.01f) : s.TextureScale > 0 ? 1f / s.TextureScale : 0.5f;
+            Vector2 Uv(Vector3 p, Vector3 fn)
+            {
+                // box projection along the face's dominant axis
+                Vector3 f = new Vector3(Math.Abs(fn.x), Math.Abs(fn.y), Math.Abs(fn.z));
+                Vector2 q = f.x >= f.y && f.x >= f.z ? new Vector2(p.z, p.y) : f.y >= f.z ? new Vector2(p.x, p.z) : new Vector2(p.x, p.y);
+                q *= scale;
+                if (!atlas) return q;
+                return new Vector2((0.35f + 0.3f * PingPong(q.x)) / cols, (0.35f + 0.3f * PingPong(q.y)) / rows);
+            }
+            var acc = new Acc();
+            float cosBin = Mathf.Cos(s.BinAngleDeg * Mathf.Deg2Rad);
+            int maxBins = Math.Max(1, s.MaxBins);
+            for (int i = 0; i < keep.Count; i++)
+            {
+                int t = keep[i];
+                Vector3 a = pos[tri[t]], b = pos[tri[t + 1]], c = pos[tri[t + 2]];
+                Vector3 fn = Vector3.Cross(b - a, c - a).normalized;
+                int bin = -1;
+                float best = -2;
+                for (int j = 0; j < acc.BinSum.Count; j++)
+                {
+                    float d = Vector3.Dot(acc.BinSum[j].normalized, fn);
+                    if (d > best) { best = d; bin = j; }
+                }
+                if (bin < 0 || (best < cosBin && acc.BinSum.Count < maxBins))
+                {
+                    acc.Bins.Add(new List<int>()); acc.BinSum.Add(Vector3.zero); acc.BinArea.Add(1e-4f);
+                    bin = acc.Bins.Count - 1;
+                }
+                acc.BinSum[bin] += fn;
+                int ia = ids[3 * i], ib = ids[3 * i + 1], ic = ids[3 * i + 2];
+                int v0 = Add(acc, a + vn[ia] * lift, vn[ia], Uv(a, fn));
+                Add(acc, b + vn[ib] * lift, vn[ib], Uv(b, fn));
+                Add(acc, c + vn[ic] * lift, vn[ic], Uv(c, fn));
+                Tri(acc, acc.Bins[bin], v0, v0 + 1, v0 + 2, fn);
+            }
+            var bt = new int[acc.Bins.Count][];
+            var bn = new Vector3[acc.Bins.Count];
+            for (int b = 0; b < bt.Length; b++)
+            {
+                bt[b] = acc.Bins[b].ToArray();
+                bn[b] = acc.BinSum[b].sqrMagnitude > 1e-12f ? acc.BinSum[b].normalized : decalN;
+            }
+            return new PartTiles
+            {
+                Owner = owner, Vertices = acc.V.ToArray(), Normals = acc.N.ToArray(), Uvs = acc.Uv.ToArray(),
+                BinTriangles = bt, BinNormals = bn, BinAreas = acc.BinArea.ToArray(),
+                JointTriangles = new int[0], BackTriangles = new int[0], TileAreaVectors = new Vector3[0], CoveredArea = 0f
+            };
+        }
 
         // 1.6 skin overlay (landing gear, intakes; user: "lieber alles zu als alles perfekt gekachelt"): the visible outer skin
         // (as the overlay's: no obstacle, inside wrap/clip, not enclosed) welded by position (1 mm) and lifted along the welded

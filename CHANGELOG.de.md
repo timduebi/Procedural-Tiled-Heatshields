@@ -2,6 +2,20 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.8.0 (2026-11-22)
+
+- **Neue Kachelarten (`NASA-Weiß` & `Stahl`):** **NASA-Weiß** (Shuttle LRSI, `HexWhite` / `SquareWhite`) und **Stahl** (gebürsteter Edelstahl mit dezenter Hitzetönung und Glanz, `HexSteel` / `SquareSteel`) ergänzen **Schwarz** und **Schlichte Keramik** im PAW, Editor-Fenster, `Textures.cfg` und `B9PartSwitch.cfg`.
+- **Automatischer „Glatter Zylinder“ & optisches Rohr-Overlay für runde Teile (ReStock, ReStockPBR, SSPX, NFLV):** Runde Tanks und Stationsmodule mit 3D-Versteifungsringen, Rohren oder Leitern nutzen automatisch eine glatte 64-Segment-Rotationshülle (Schalter **Rumpffläche: Glatter Zylinder / Exaktes Modell** unter *Fläche*; automatisch aus auf flachbodigen/unrunden Rümpfen wie Mk2, Mk3, Flügeln oder Hubs). Horizontale Ringe und Schweißnähte werden glatt überbrückt (keine weißen Streifen mehr), während herausragende Rohre und Leitern rein optisch ein nicht-gekacheltes, zur Kachelart passendes Overlay erhalten (glüht und rußt mit, wie Fahrwerke und Lufteinlässe — ohne eigene Collider, Masse oder Kosten).
+- **Kompatibilität für runde Teile & Mods:**
+  - **Service- & Frachträume (`service-tank-375` / Near Future Spacecraft u. a.):** Behoben, dass beim Anbringen eines Decals direkt auf einer Tür ein schwebendes flaches Rechteck erschien (`no usable surface`). Automatische Erkennung der geschlossenen Türposition sowie Unterstützung mehrteiliger Falttüren (`DoorA..DoorE`).
+  - **TweakScale- & B9PartSwitch-Überwachung:** Erkennt Größenänderungen (`TweakScale`) und B9-Mesh-Variantenwechsel am Trägerteil (NFLV, SSPX, ReStock) im Editor automatisch und baut die Kacheln direkt neu.
+  - **5 m- & 7,5 m-Tanks (`ReStock`, `ReStockPBR`, `NFLV`):** Abgewickelte „Ganzes Teil“-Fläche auf $\pi \cdot R_{\text{max}}$ erweitert (kurze breite 5 m-/7,5 m-Tanks wickeln volle 180° sauber ohne Abschneiden), Standard-`maxTiles` von `40.000` auf `60.000` erhöht und Inselflutung (`FloodIslands`) auch im Modus *Exaktes Modell* aktiviert.
+- **Mk3-Passagiermodul (`mk3CrewCabin`) & Luken-Schalter:** Neuer Schalter **Luken frei lassen** (`keepHatches`) unter *Feinheiten* — beim `mk3CrewCabin` standardmäßig auf **Überkacheln** (Bodenluke/Türe und Fenster werden sauber zugekachelt), bei allen anderen Teilen auf **Frei lassen**.
+- **Editor-Komfort:** Neue **Vorlagen** (*Starship*, *Shuttle*, *Shuttle Weiß*, *Delta Stahl*) und Schalter **Alle Hitzeschilde hervorheben** im Editor-Fenster (`DecalWindow`) sowie **Einstellungen auf alle kopieren** direkt im PAW.
+- **Verwitterung, richtungsabhängige Verkohlung, Schildstatus & Warnungen:** Regler **Verwitterung** (0–100 %, direkte Einfärbung ohne Netz-Neubau), richtungsabhängiger Rußverlauf je Glüh-Bin (angeströmte Kacheln verkohlen bis ~2× dunkler), Fluganzeige **Schildstatus** (*Nominal / Grenzwertig / Ablator fast leer! / Aufgebraucht!*) sowie einmalige Warnmeldungen unter 10 % und bei 0 % Ablator.
+- **Optionales Kachel-Abplatzen & EVA-Reparatur durch Ingenieure:** Neuer Schalter **Kachel-Abplatzen** (Sandbox standardmäßig *Aus*, Wissenschaft & Karriere *Aktiv*), lässt bei extremer Hitze oder niedrigem Ablator schrittweise bis zu 25 % der Kacheln abplatzen. Ingenieure können im EVA über **Hitzekacheln reparieren (EVA)** Kacheln und Ablator wiederherstellen (Sandbox & Wissenschaft kostenlos; Karriere verbraucht 1 Stock-`evaRepairKit`).
+- **Mod-Patches & Release-Paketierung:** Optionale ModuleManager-Patches für **Community Tech Tree** (`heatManagementSystems`), **Deadly Reentry** und **FAR**. MIT-`LICENSE` ergänzt, interne Design-Dokumente nach `docs/` verschoben und `tools/package-release.ps1` für saubere CKAN-/Linux-kompatible Release-ZIPs erstellt.
+
 ## 1.7.4 (2026-11-21)
 
 - **Glatte schwarze ungekachelte Keramik an Spitze & Seiten von Mk1 und Mk2 (`ceramicSideDeg`):** Beim Mk2- (`58°`) und Mk1-Cockpit (`50°`) werden Nasenspitze und beide Seiten/Chines als glatte, exakt an der Maske geschnittene schwarze Keramikschale (mit richtungsabhängigen Glüh-Bins und bündigen Stapelkanten) umgesetzt, während Bauch und Oberseite vor den Fenstern echte 3D-Kacheln (Hex/Quadrat) behalten. Mk3 bleibt vollständig mit echten 3D-Kacheln bestückt. Mk1- und Mk2-Cockpithüllen neu gebacken.
@@ -63,7 +77,7 @@ Nach dem Spieltest von 1.6.0/1.6.1. Offline geprüft (Build 0/0, SelfCheck grün
 - Geschlossene Fahrwerks- und Einlassschalen mit Kacheltextur. Die Lichtreflex-Fläche des Fahrwerks bleibt frei. Klappen folgen der belegten Seite.
 - Lückenfüllung an Cockpitmasken und Mk2-Tanks. Ein dunkles Fugenbett schließt die Tankseite bis zur Umgriffsgrenze beider Muster.
 - Überarbeitete Glühtexturen für Quadrat/Schwarz, Hex/Keramik und Quadrat/Keramik. Das Wiedereintrittsprotokoll enthält die maximale Kacheltemperatur und Glühintensität.
-- Messwerte und Reproduktion im [Übergabeprotokoll](CLAUDE-HANDOFF.md).
+- Messwerte und Reproduktion im [Übergabeprotokoll](docs/CLAUDE-HANDOFF.md).
 
 ## 1.5.0 (2026-11-19)
 
