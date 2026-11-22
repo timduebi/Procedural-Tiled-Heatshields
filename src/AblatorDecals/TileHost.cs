@@ -44,8 +44,8 @@ namespace AblatorDecals
         public Vector3[] TileAreaVectors = new Vector3[0];
         public Color[] GlowSet = new Color[0];   // colour last written to the bin material
 
-        // host space -> decal space at build time (a flap host: decal space with the flap in neutral position)
-        private Matrix4x4 hostToDecal = Matrix4x4.identity;
+        // host space <-> decal space at build time (a flap host: decal space with the flap in neutral position)
+        private Matrix4x4 hostToDecal = Matrix4x4.identity, decalToHostMat = Matrix4x4.identity;
         private int glowPropId, emissiveTexProp, metalTexProp;
         private bool hasBump, hasMetal, hasSmoothness, hasGlossMapScale;
         // 1.9: the template's specular colour; charred tiles fade towards matte scorch
@@ -60,6 +60,15 @@ namespace AblatorDecals
             Vector3 local = Go.transform.InverseTransformDirection(world);
             Vector3 d = hostToDecal.MultiplyVector(local);
             return d.sqrMagnitude > 1e-12f ? d.normalized : Vector3.zero;
+        }
+
+        // 1.11.3: bin normal in world space, for continuous vessel-space windward charring across part seams
+        public Vector3 WorldBinNormal(int bin)
+        {
+            if (Go == null || bin < 0 || bin >= BinNormals.Length) return Vector3.zero;
+            Vector3 local = decalToHostMat.MultiplyVector(BinNormals[bin]);
+            Vector3 w = Go.transform.TransformDirection(local);
+            return w.sqrMagnitude > 1e-12f ? w.normalized : Vector3.zero;
         }
 
         public TileHost(PartModule owner, Part targetPart, Transform parent, int layer, string name)
@@ -85,6 +94,7 @@ namespace AblatorDecals
             BinNormals = t.BinNormals;
             BinAreas = t.BinAreas;
             TileAreaVectors = t.TileAreaVectors;
+            decalToHostMat = decalToHost;
             hostToDecal = decalToHost.inverse;
 
             int n = t.Vertices.Length;
@@ -285,18 +295,20 @@ namespace AblatorDecals
         private Material[] streakMats = new Material[0];
         private float[] streakAlpha = new float[0];
         private bool streakDirty = true;
-        private Vector3[] streakRootPos = new Vector3[0], streakRootN = new Vector3[0]; // per streak vertex, vessel root space
-        private Vector3 streakFlow;
+        private Vector3[] streakRootPos = new Vector3[0]; // per streak vertex, vessel root space
+        private Vector3 streakFlow, streakBelly;
+        private float streakBellyZ;
         private Texture streakTex;
-        private const float StreakLift = 0.0018f, StreakU = 1.8f, StreakV = 3.2f;
+        // 1.11.3: large organic repeat scale (4.2 m across x 7.5 m along flow) so wide delta wings & Starships never show repeating stamps
+        private const float StreakLift = 0.0018f, StreakU = 4.2f, StreakV = 7.5f;
 
         public void SetStreakAlpha(int bin, float a)
         {
             if (bin >= 0 && bin < streakAlpha.Length) streakAlpha[bin] = a;
         }
 
-        // root: vessel root transform; flow: reentry airflow in root space (unit). Call after SetStreakAlpha for all bins.
-        public void EnsureStreaks(Texture tex, Shader shader, Transform root, Vector3 flow)
+        // root: vessel root transform; flow: reentry airflow in root space (unit); belly/bellyZ: vessel belly normal & offset in root space.
+        public void EnsureStreaks(Texture tex, Shader shader, Transform root, Vector3 flow, Vector3 belly, float bellyZ)
         {
             if (Go == null || Mesh == null || root == null || tex == null || shader == null || BinCount == 0) return;
             bool any = false;
@@ -316,8 +328,9 @@ namespace AblatorDecals
             }
             streakGo.layer = Go.layer;
             if (streakDirty || streakMats.Length != BinCount || streakTex != tex || (streakMats.Length > 0 && streakMats[0].shader != shader))
-                BuildStreaks(tex, shader, root, flow);
-            else if (Vector3.Angle(streakFlow, flow) > 10f) ProjectStreaks(flow);
+                BuildStreaks(tex, shader, root, flow, belly, bellyZ);
+            else if (Vector3.Angle(streakFlow, flow) > 10f || Vector3.Angle(streakBelly, belly) > 10f || Mathf.Abs(streakBellyZ - bellyZ) > 0.25f)
+                ProjectStreaks(flow, belly, bellyZ);
             for (int b = 0; b < streakMats.Length; b++)
             {
                 float a = b < streakAlpha.Length ? streakAlpha[b] : 0;
@@ -330,7 +343,7 @@ namespace AblatorDecals
             streakRenderer.enabled = any;
         }
 
-        private void BuildStreaks(Texture tex, Shader shader, Transform root, Vector3 flow)
+        private void BuildStreaks(Texture tex, Shader shader, Transform root, Vector3 flow, Vector3 belly, float bellyZ)
         {
             streakDirty = false;
             streakTex = tex;
@@ -339,7 +352,6 @@ namespace AblatorDecals
             var pos = new List<Vector3>();
             var nrm = new List<Vector3>();
             var rootPos = new List<Vector3>();
-            var rootN = new List<Vector3>();
             var subs = new int[BinCount][];
             for (int b = 0; b < BinCount; b++)
             {
@@ -353,7 +365,6 @@ namespace AblatorDecals
                     if (fn.sqrMagnitude < 1e-14f) continue;
                     // tile tops only: walls and bevels turn away from the bin's direction (decal space)
                     if (binN != Vector3.zero && Vector3.Dot(hostToDecal.MultiplyVector(fn).normalized, binN) < 0.6f) continue;
-                    Vector3 rn = toRoot.MultiplyVector(fn).normalized;
                     for (int k = 0; k < 3; k++)
                     {
                         int vi = tris[t + k];
@@ -362,20 +373,18 @@ namespace AblatorDecals
                         pos.Add(p);
                         nrm.Add(hn[vi]);
                         rootPos.Add(toRoot.MultiplyPoint3x4(p));
-                        rootN.Add(rn); // per face: one projection axis per triangle
                     }
                 }
                 subs[b] = outTris.ToArray();
             }
             streakRootPos = rootPos.ToArray();
-            streakRootN = rootN.ToArray();
             streakMesh.Clear();
             streakMesh.indexFormat = pos.Count > 65000 ? IndexFormat.UInt32 : IndexFormat.UInt16;
             streakMesh.SetVertices(pos);
             streakMesh.SetNormals(nrm);
             streakMesh.subMeshCount = BinCount;
             for (int b = 0; b < BinCount; b++) streakMesh.SetTriangles(subs[b], b);
-            ProjectStreaks(flow);
+            ProjectStreaks(flow, belly, bellyZ);
             streakMesh.RecalculateBounds();
 
             if (streakMats.Length != BinCount || (streakMats.Length > 0 && streakMats[0].shader != shader))
@@ -393,18 +402,25 @@ namespace AblatorDecals
             streakRenderer.sharedMaterials = streakMats;
         }
 
-        // u across the flow (on the axis perpendicular to the flow that lies most in the face), v along it, in metres / tile size
-        private void ProjectStreaks(Vector3 flow)
+        // 1.11.3: C-infinity continuous vessel-space UV projection depending ONLY on vertex position p (no 45-deg normal flip!).
+        // Any two adjacent parts share identical UVs along their seam, while side walls wrap smoothly without smearing.
+        private void ProjectStreaks(Vector3 flow, Vector3 belly, float bellyZ)
         {
             streakFlow = flow;
-            Vector3 right = Vector3.Cross(flow, Mathf.Abs(flow.y) < 0.9f ? Vector3.up : Vector3.forward).normalized;
-            Vector3 third = Vector3.Cross(right, flow);
+            streakBelly = belly;
+            streakBellyZ = bellyZ;
+            Vector3 b = belly - flow * Vector3.Dot(belly, flow);
+            if (b.sqrMagnitude < 1e-6f) b = Vector3.Cross(flow, Mathf.Abs(flow.y) < 0.9f ? Vector3.up : Vector3.forward);
+            b.Normalize();
+            Vector3 span = Vector3.Cross(flow, b).normalized;
             var uv = new Vector2[streakRootPos.Length];
             for (int i = 0; i < uv.Length; i++)
             {
-                Vector3 p = streakRootPos[i], n = streakRootN[i];
-                Vector3 across = Mathf.Abs(Vector3.Dot(n, third)) >= Mathf.Abs(Vector3.Dot(n, right)) ? right : third;
-                uv[i] = new Vector2(Vector3.Dot(p, across) / StreakU, Vector3.Dot(p, flow) / StreakV);
+                Vector3 p = streakRootPos[i];
+                float x = Vector3.Dot(p, span);
+                float z = Vector3.Dot(p, b) - bellyZ;
+                float u = x + 0.45f * z * (x / Mathf.Sqrt(x * x + 0.5f));
+                uv[i] = new Vector2(u / StreakU, Vector3.Dot(p, flow) / StreakV);
             }
             streakMesh.uv = uv;
         }

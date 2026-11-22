@@ -2,6 +2,12 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.11.3 (2026-11-22)
+
+- **Späterer, glühbewusster Streifen-Beginn & nahtlose schiffsweite Projektion (`CharStreaks.cs`, `TileHost.cs`, `ModuleAblativeDecal.cs`):**
+  - **Keine dunklen Linien mehr über den Reentry-Flammen:** Weiche Verzögerung beim Beginn (`SmoothStep(0,006; 0,025; u)`), sodass Schilde in den ersten Sekunden sauber bleiben, PLUS automatisches Ausblenden des Streifen-Overlays während aktivem Hitzeglühen (`glowMask`) — die Verwitterungsstreifen erscheinen erst natürlich beim Abkühlen nach der Glühphase.
+  - **Nahtlose Streifen über Flügel & Rumpf:** Pro-Decal-Normalisierung (`maxExposure`) und stufenhafte Pro-Teil-Gradienten ersetzt durch `95 %` schiffsweiten Gleichlauf + kontinuierliche Windrichtung (`WorldBinNormal`), die 45°-Kippkante in der UV-Projektion durch eine stetige, rein positionsabhängige Schiffs-Projektion ersetzt, das Streifenmuster auf `4,2 m × 7,5 m` mit längeren, weicheren Strömungsfahnen vergrößert und die Verwitterungsintensität insgesamt leicht zurückgenommen (~18 % dezenter).
+
 ## 1.11.2 (2026-11-22)
 
 - **Rechtsklick-Menü (PAW) im VAB aufgeräumt (`ModuleAblativeDecal.cs`):**

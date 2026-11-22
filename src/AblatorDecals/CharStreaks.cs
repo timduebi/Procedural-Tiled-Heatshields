@@ -32,44 +32,44 @@ namespace AblatorDecals
         // one texel; u, v in [0, 1), periodic in both (every period is an integer)
         public static void Pixel(StreakStyle style, float u, float v, int seed, out float r, out float g, out float b, out float a)
         {
-            // organic waviness: streaks meander slightly across the flow (warp periodic in v and u)
-            float warp = 0.012f * (2 * Noise(0.5f, v * 3, 1, 3, seed + 11) - 1) + 0.005f * (2 * Noise(u * 4, v * 8, 4, 8, seed + 12) - 1);
+            // gentle aerodynamic meandering along the flow (periodic in v and u)
+            float warp = 0.014f * (2 * Noise(0.5f, v * 2, 1, 2, seed + 11) - 1) + 0.006f * (2 * Noise(u * 3, v * 4, 3, 4, seed + 12) - 1);
             float uu = u + warp;
-            float patch = Smooth(0.25f, 0.75f, Noise(u * 3, v * 2, 3, 2, seed + 13)); // patchy: some areas stay clean
-            float tint = Noise(u * 6, v * 2, 6, 2, seed + 14);
+            // large-scale continuous flow modulation (avoids repeating rows or blocky patches across wide wings)
+            float macro = Smooth(0.18f, 0.82f, Noise(uu * 2, v * 1, 2, 1, seed + 13) * 0.65f + Noise(uu * 5, v * 2, 5, 2, seed + 15) * 0.35f);
+            float tint = Noise(u * 4, v * 2, 4, 2, seed + 14);
             switch (style)
             {
                 case StreakStyle.HexBlack:
                 {
-                    // broad soft fans, crisp streaks inside them and fine plasma filaments clustered in the fans (feathery)
-                    // 1.11: higher peak ceiling so 1 Kerbin reentry (~amt 0.50) hits ~85 % of the 1.10.1 max and 2+ reentries go much heavier
-                    float fan = Streaks(uu, v, 14, 2, 0.55f, 0.60f, 1.1f, seed);
-                    float cluster = Streaks(uu, v, 14, 2, 0.80f, 0.60f, 0.6f, seed);           // same fans, wider: where filaments live
-                    float crisp = Streaks(uu, v, 44, 2, 0.35f, 0.70f, 1.4f, seed + 1) * (0.25f + 0.75f * cluster);
-                    float fil = Streaks(uu, v, 120, 3, 0.30f, 0.65f, 1.2f, seed + 2) * (0.15f + 0.85f * cluster);
-                    float veil = 0.24f * Smooth(0.50f, 0.92f, Noise(uu * 24, v * 2, 24, 2, seed + 3)); // faint ash veil
-                    a = 0.95f * Screen(0.76f * fan, crisp, 0.85f * fil, veil) * (0.50f + 0.50f * patch);
-                    r = Lerp(0.82f, 0.80f, tint); g = Lerp(0.84f, 0.71f, tint); b = Lerp(0.87f, 0.60f, tint); // silver -> warm tan
+                    // long flowing ash plumes + fine feathery plasma filaments (1.11.3: perV=1 on broad fans for unbroken sweeps)
+                    float fan = Streaks(uu, v, 10, 1, 0.68f, 0.65f, 0.85f, seed);
+                    float cluster = Streaks(uu, v, 10, 1, 0.90f, 0.65f, 0.50f, seed);
+                    float crisp = Streaks(uu, v, 34, 1, 0.42f, 0.68f, 1.10f, seed + 1) * (0.30f + 0.70f * cluster);
+                    float fil = Streaks(uu, v, 96, 2, 0.34f, 0.62f, 1.00f, seed + 2) * (0.20f + 0.80f * cluster);
+                    float veil = 0.22f * Smooth(0.45f, 0.90f, Noise(uu * 18, v * 1, 18, 1, seed + 3));
+                    a = 0.92f * Screen(0.74f * fan, crisp, 0.80f * fil, veil) * (0.45f + 0.55f * macro);
+                    r = Lerp(0.82f, 0.80f, tint); g = Lerp(0.84f, 0.72f, tint); b = Lerp(0.87f, 0.62f, tint); // silver -> warm tan
                     break;
                 }
                 case StreakStyle.SquareBlack:
                 {
-                    // broad soft smoky flow bands, a few medium streaks and elongated soot wisps (Shuttle belly patina)
-                    float band = Streaks(uu, v, 8, 1, 0.60f, 0.70f, 0.7f, seed);
-                    float mid = Streaks(uu, v, 26, 2, 0.45f, 0.55f, 1.0f, seed + 1);
-                    float wisp = Smooth(0.48f, 0.88f, Noise(uu * 32, v * 6, 32, 6, seed + 2));
-                    a = 0.88f * Screen(0.76f * band, 0.68f * mid, 0.36f * wisp, 0) * (0.50f + 0.50f * patch);
+                    // broad soft smoky flow bands and elongated ash wisps (Shuttle belly patina)
+                    float band = Streaks(uu, v, 6, 1, 0.72f, 0.72f, 0.65f, seed);
+                    float mid = Streaks(uu, v, 20, 1, 0.52f, 0.58f, 0.90f, seed + 1);
+                    float wisp = Smooth(0.46f, 0.88f, Noise(uu * 24, v * 3, 24, 3, seed + 2));
+                    a = 0.85f * Screen(0.74f * band, 0.65f * mid, 0.34f * wisp, 0) * (0.45f + 0.55f * macro);
                     r = Lerp(0.64f, 0.85f, tint); g = Lerp(0.64f, 0.86f, tint); b = Lerp(0.66f, 0.88f, tint); // ash grey -> pale silver
                     break;
                 }
                 default:
                 {
-                    float fan = Streaks(uu, v, 12, 2, 0.55f, 0.60f, 1.0f, seed);
-                    float cluster = Streaks(uu, v, 12, 2, 0.80f, 0.60f, 0.6f, seed);
-                    float crisp = Streaks(uu, v, 36, 2, 0.40f, 0.65f, 1.3f, seed + 1) * (0.30f + 0.70f * cluster);
-                    float fil = Streaks(uu, v, 90, 3, 0.30f, 0.55f, 1.2f, seed + 2) * (0.20f + 0.80f * cluster);
-                    float wisp = Smooth(0.52f, 0.90f, Noise(uu * 24, v * 6, 24, 6, seed + 3));
-                    a = 0.95f * Screen(0.68f * fan, 0.85f * crisp, 0.68f * fil, 0.30f * wisp) * (0.50f + 0.50f * patch);
+                    float fan = Streaks(uu, v, 9, 1, 0.68f, 0.65f, 0.85f, seed);
+                    float cluster = Streaks(uu, v, 9, 1, 0.90f, 0.65f, 0.50f, seed);
+                    float crisp = Streaks(uu, v, 28, 1, 0.46f, 0.65f, 1.05f, seed + 1) * (0.30f + 0.70f * cluster);
+                    float fil = Streaks(uu, v, 76, 2, 0.34f, 0.55f, 1.00f, seed + 2) * (0.20f + 0.80f * cluster);
+                    float wisp = Smooth(0.48f, 0.90f, Noise(uu * 18, v * 3, 18, 3, seed + 3));
+                    a = 0.92f * Screen(0.68f * fan, 0.82f * crisp, 0.65f * fil, 0.28f * wisp) * (0.45f + 0.55f * macro);
                     r = Lerp(0.08f, 0.13f, tint); g = Lerp(0.07f, 0.10f, tint); b = Lerp(0.06f, 0.08f, tint); // charcoal brown
                     break;
                 }
@@ -79,7 +79,7 @@ namespace AblatorDecals
         private static float Screen(float a, float b, float c, float d) => 1 - (1 - a) * (1 - b) * (1 - c) * (1 - d);
 
         // one layer of streaks: cols columns across u (a share "present" of them carry streaks), perV streaks per column along
-        // v, each starting from a point, widening into a bright head, then fading and thinning out (exponent fade) downstream; width = share of a column
+        // v, each easing in smoothly, flowing downstream and fading gently without abrupt arrowhead steps
         private static float Streaks(float uu, float v, int cols, int perV, float width, float present, float fade, int seed)
         {
             float x = uu * cols;
@@ -93,15 +93,15 @@ namespace AblatorDecals
                 float t = y - (float)Math.Floor(y); // 0 at the head
                 int id = cc * 7 + rep;
                 if (Hash(id, 0, seed) > present) continue;
-                float len = 0.50f + 0.45f * Hash(id, 4, seed);
+                float len = 0.65f + 0.34f * Hash(id, 4, seed);
                 if (t >= len) continue;
                 float k = t / len;
-                float w = width * (0.5f + Hash(id, 2, seed)) * (0.15f + 0.85f * Smooth(0f, 0.25f, k)) * (1 - 0.5f * k); // pointed start, widens, thins out
+                float w = width * (0.55f + 0.9f * Hash(id, 2, seed)) * (0.22f + 0.78f * Smooth(0f, 0.30f, k)) * (1 - 0.42f * k);
                 float d = Math.Abs(fx - (dc + 0.5f + 0.8f * (Hash(id, 1, seed) - 0.5f))) / w;
                 if (d >= 1) continue;
                 float across = 1 - d * d;
-                float along = (float)Math.Pow(1 - k, fade) * Smooth(0f, 0.10f, k);
-                best = Math.Max(best, across * across * along * (0.55f + 0.45f * Hash(id, 5, seed)));
+                float along = (float)Math.Pow(1 - k, fade) * Smooth(0f, 0.24f, k);
+                best = Math.Max(best, across * across * along * (0.58f + 0.42f * Hash(id, 5, seed)));
             }
             return best;
         }

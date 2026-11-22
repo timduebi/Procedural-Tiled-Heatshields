@@ -669,8 +669,10 @@ namespace AblatorDecals
                 // 1.9: small steps, char builds up smoothly; 1.10: also when other shields of the vessel char (unified level) or the
                 // flow turns (streaks re-projected by TileHost past 10 deg)
                 VesselChar vc = CharField();
-                float uni = vc != null ? 0.8f * vc.Used + 0.2f * used : used;
+                float uni = vc != null ? 0.95f * vc.Used + 0.05f * used : used;
+                float gMask = 1f - Mathf.SmoothStep(0.08f, 0.45f, (float)glowShownMax);
                 if (Mathf.Abs(used - appliedChar) >= 0.003f || Mathf.Abs(uni - appliedUnified) >= 0.003f ||
+                    Mathf.Abs(gMask - appliedGlowMask) >= 0.02f ||
                     (vc != null && Vector3.Angle(vc.Flow, appliedFlow) > 10f)) ApplyChar(used);
             }
 
@@ -786,11 +788,18 @@ namespace AblatorDecals
         {
             appliedChar = used;
             VesselChar vc = CharField();
-            float uni = vc != null ? 0.8f * vc.Used + 0.2f * used : used;
+            // 1.11.3: 95 % vessel-wide level so adjacent wing panels and fuselage modules share identical weathering across seams
+            float uni = vc != null ? 0.95f * vc.Used + 0.05f * used : used;
             appliedUnified = uni;
             Transform root = RootTransform();
             Vector3 flow = vc != null ? vc.Flow : DefaultFlow;
             appliedFlow = flow;
+            // 1.11.3: hide the un-emissive streak overlay while tiles glow hot so dark lines never sit over reentry flames;
+            // streaks emerge smoothly as the tiles cool down after peak heating
+            float glowMask = HighLogic.LoadedSceneIsFlight ? (1f - Mathf.SmoothStep(0.08f, 0.45f, (float)glowShownMax)) : 1f;
+            appliedGlowMask = glowMask;
+            Vector3 belly = vc != null ? vc.Belly : (root != null ? root.InverseTransformDirection(part.partTransform.TransformDirection(shieldNormal)) : Vector3.forward);
+            float bellyZ = vc != null ? vc.BellyZ : 0f;
             bool black = string.Equals(Finish, "Black", StringComparison.OrdinalIgnoreCase);
             bool ceramic = string.Equals(Finish, "Ceramic", StringComparison.OrdinalIgnoreCase);
             bool steel = string.Equals(Finish, "Steel", StringComparison.OrdinalIgnoreCase);
@@ -810,11 +819,9 @@ namespace AblatorDecals
                 : ceramic ? (pbr ? new Color(0.90f, 0.83f, 0.77f) : new Color(1.75f, 1.62f, 1.50f))
                 : steel ? new Color(0.84f, 0.79f, 0.73f)
                 : new Color(0.28f, 0.25f, 0.22f);
-            float colScale = darkShield ? 0.78f : steel ? 0.65f : 0.92f;
+            float colScale = darkShield ? 0.64f : steel ? 0.54f : 0.80f;
             StreakStyle style = !darkShield ? StreakStyle.Soot : Shape == TileShape.Square ? StreakStyle.SquareBlack : StreakStyle.HexBlack;
-            // 1.11: CharStreaks peak alpha is ~0.69-0.72; at 1 Kerbin reentry (uni ~0.06) amt ~0.50 -> ~85 % of the 1.10.1 max;
-            // 2+ reentries (uni 0.12-0.25+) climb to amt 0.72-1.0 -> up to ~1.7x stronger veteran scorch
-            float strength = style == StreakStyle.SquareBlack ? 0.92f : 1.00f;
+            float strength = style == StreakStyle.SquareBlack ? 0.76f : 0.82f;
             Texture2D streakTex = null;
             Shader streakSh = null;
             try
@@ -830,28 +837,36 @@ namespace AblatorDecals
             foreach (TileHost h in hosts)
             {
                 if (!h.Alive) continue;
-                float grad = 1f;
-                if (vc != null && root != null && vc.AxMax > vc.AxMin + 0.05f)
-                {
-                    float ax = Vector3.Dot(root.InverseTransformPoint(h.Renderer.bounds.center), flow);
-                    grad = 1.12f - 0.24f * Mathf.Clamp01((ax - vc.AxMin) / (vc.AxMax - vc.AxMin)); // nose (upstream) a bit darker
-                }
-                float[] exp = null;
-                bool directional = maxExposure > 0f && binExposure.TryGetValue(h, out exp);
                 for (int b = 0; b < h.BinCount; b++)
                 {
-                    float dirFactor = directional && b < exp.Length ? 0.35f + 1.15f * exp[b] / maxExposure : 1f;
-                    float amt = Mathf.Clamp01(baseWeath + Mathf.Pow(Mathf.Clamp01(uni * grad * 4.2f * dirFactor), 0.50f));
+                    // 1.11.3: continuous vessel-space windward facing (identical on both sides of any wing/fuselage seam;
+                    // replaces per-decal maxExposure normalization which caused abrupt opacity steps between adjacent parts)
+                    float dirFactor = 1f;
+                    if (HighLogic.LoadedSceneIsFlight && root != null)
+                    {
+                        Vector3 wn = h.WorldBinNormal(b);
+                        if (wn != Vector3.zero)
+                        {
+                            float windward = Mathf.Clamp01(Vector3.Dot(root.InverseTransformDirection(wn).normalized, -flow));
+                            dirFactor = 0.55f + 0.55f * windward;
+                        }
+                    }
+                    // 1.11.3: smooth delayed onset — stays clean during the first seconds of reentry (u < 0.006),
+                    // reaches ~0.50 after one Kerbin reentry (u ~ 0.06) and climbs to 1.0 across 2+ reentries (u >= 0.22)
+                    float u = uni * dirFactor;
+                    float onset = Mathf.SmoothStep(0.006f, 0.025f, u);
+                    float reentryAmt = onset * Mathf.Pow(Mathf.Clamp01((u - 0.004f) * 4.2f), 0.54f);
+                    float amt = Mathf.Clamp01(baseWeath + reentryAmt);
                     h.SetBinChar(b, Color.Lerp(baseCol, charCol, amt * colScale), amt);
-                    h.SetStreakAlpha(b, Mathf.Clamp01(amt * strength));
+                    h.SetStreakAlpha(b, Mathf.Clamp01(amt * strength * glowMask));
                 }
-                if (streakTex != null && streakSh != null) h.EnsureStreaks(streakTex, streakSh, root, flow);
+                if (streakTex != null && streakSh != null) h.EnsureStreaks(streakTex, streakSh, root, flow, belly, bellyZ);
             }
         }
 
         // ---------- 1.10 vessel-wide char and streaks ----------
 
-        private float appliedUnified = -1;
+        private float appliedUnified = -1, appliedGlowMask = 1f;
         private Vector3 appliedFlow = DefaultFlow;
         // the craft's longitudinal aft direction in root space: air runs nose to tail (VAB and SPH, the root's up is the nose)
         private static readonly Vector3 DefaultFlow = Vector3.down;
@@ -861,7 +876,8 @@ namespace AblatorDecals
             public int Frame = -1;
             public float Used;                        // area-weighted ablator use of all decals on the vessel
             public Vector3 Flow = DefaultFlow;        // root space, unit
-            public float AxMin, AxMax;                // extent of the tile hosts along Flow (root space)
+            public Vector3 Belly = Vector3.forward;   // 1.11.3: area-weighted outward belly normal in root space (perp to Flow)
+            public float BellyZ;                      // 1.11.3: mean coordinate of shields along Belly (root space)
         }
 
         // ponytail: weak table keyed by the Vessel (gone with it, nothing to clear on unload), as GlowFields
@@ -876,31 +892,36 @@ namespace AblatorDecals
             if (f.Frame == Time.frameCount) return f;
             f.Frame = Time.frameCount;
             double area = 0, sum = 0;
-            Vector3 flow = Vector3.zero;
+            Vector3 flow = Vector3.zero, bellySum = Vector3.zero;
+            Transform root = RootTransform();
             foreach (ModuleAblativeDecal d in VesselDecals())
             {
                 if (d == null || d.vessel != vessel) continue;
                 flow += d.charFlowDir;
+                if (root != null && d.coveredArea > 0)
+                    bellySum += root.InverseTransformDirection(d.part.partTransform.TransformDirection(d.shieldNormal)) * (float)d.coveredArea;
                 if (d.coveredArea <= 0 || d.ablator == null || d.ablator.maxAmount <= 0) continue;
                 area += d.coveredArea;
                 sum += d.coveredArea * (1 - d.ablator.amount / d.ablator.maxAmount);
             }
             f.Used = area > 0 ? (float)(sum / area) : 0f;
             f.Flow = flow.sqrMagnitude > 1e-12f ? flow.normalized : DefaultFlow;
-            Transform root = RootTransform();
-            f.AxMin = float.MaxValue; f.AxMax = float.MinValue;
+            Vector3 b = bellySum - f.Flow * Vector3.Dot(bellySum, f.Flow);
+            if (b.sqrMagnitude < 1e-6f) b = Vector3.Cross(f.Flow, Mathf.Abs(f.Flow.y) < 0.9f ? Vector3.up : Vector3.forward);
+            f.Belly = b.normalized;
+            double zSum = 0, zArea = 0;
             if (root != null)
                 foreach (ModuleAblativeDecal d in VesselDecals())
                 {
-                    if (d == null || d.vessel != vessel) continue;
+                    if (d == null || d.vessel != vessel || d.coveredArea <= 0) continue;
                     foreach (TileHost h in d.hosts)
                     {
                         if (!h.Alive) continue;
-                        float ax = Vector3.Dot(root.InverseTransformPoint(h.Renderer.bounds.center), f.Flow);
-                        f.AxMin = Mathf.Min(f.AxMin, ax); f.AxMax = Mathf.Max(f.AxMax, ax);
+                        zSum += Vector3.Dot(root.InverseTransformPoint(h.Renderer.bounds.center), f.Belly) * d.coveredArea;
+                        zArea += d.coveredArea;
                     }
                 }
-            if (f.AxMax < f.AxMin) f.AxMin = f.AxMax = 0;
+            f.BellyZ = zArea > 0 ? (float)(zSum / zArea) : 0f;
             return f;
         }
 

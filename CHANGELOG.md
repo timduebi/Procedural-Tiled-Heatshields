@@ -2,6 +2,12 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.11.3 (2026-11-22)
+
+- **Delayed, Glow-Aware Streak Onset & Seamless Vessel-Wide Projection (`CharStreaks.cs`, `TileHost.cs`, `ModuleAblativeDecal.cs`):**
+  - **No dark lines over reentry flames:** Added a smooth delayed weathering onset (`SmoothStep(0.006, 0.025, u)`) so shields stay clean during the first seconds of reentry, AND faded the un-emissive streak overlay out while tiles are glowing hot (`glowMask = 1 - SmoothStep(0.08, 0.45, glowShownMax)`) so weathering streaks emerge naturally only as the glowing plasma cools down.
+  - **100 % seamless streaks across wings & fuselage:** Replaced per-decal `maxExposure` and per-host gradients with continuous vessel-space windward facing (`95 %` unified vessel char + continuous `WorldBinNormal` dot `-flow`), replaced the 45° normal-flip UV projection with a C∞ continuous vessel-space belly-wrap projection depending purely on vertex position, increased streak scale (`4.2 m × 7.5 m`) with longer, softer flow plumes (`perV = 1`) to eliminate part-seam steps and repeating stamp rows across wide delta wings, and dialed overall weathering intensity down slightly (~18 % subtler).
+
 ## 1.11.2 (2026-11-22)
 
 - **Tidied VAB Right-Click Menu (PAW) (`ModuleAblativeDecal.cs`):**
