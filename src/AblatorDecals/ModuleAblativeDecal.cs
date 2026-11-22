@@ -45,13 +45,14 @@ namespace AblatorDecals
         [KSPField(guiActive = true, guiName = L + "tileTemp")]
         public string tileTemp = "";
 
-        [KSPField(guiActiveEditor = true, guiName = L + "tileCount")]
+        [KSPField(guiActiveEditor = true, guiName = L + "tileCount", groupName = GrpFine, groupDisplayName = GrpFineName, groupStartCollapsed = true)]
         public int tileCount;
 
-        [KSPField(guiActiveEditor = true, guiActive = true, guiName = L + "partsCovered")]
+        [KSPField(guiActiveEditor = false, guiActive = true, guiName = L + "partsCovered")]
         public int partsCovered;
 
-        [KSPField(guiActiveEditor = true, guiName = L + "ablatorUnits", guiFormat = "F1", guiUnits = " u")]
+        // 1.11.2: hidden in VAB (KSP already displays the stock Ablator resource bar in the PAW)
+        [KSPField(guiActiveEditor = false, guiName = L + "ablatorUnits", guiFormat = "F1", guiUnits = " u")]
         public double ablatorUnits;
 
         [KSPField(guiActiveEditor = true, guiName = L + "tileMass")]
@@ -81,11 +82,11 @@ namespace AblatorDecals
         [UI_FloatEdit(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, minValue = 0.03f, maxValue = 0.5f, incrementLarge = 0.05f, incrementSmall = 0.01f, incrementSlide = 0.005f, sigFigs = 3, unit = " m")]
         public float tileSize = 0.1f;
 
-        [KSPField(isPersistant = true, guiActiveEditor = true, guiName = L + "patternAngle", groupName = Grp, groupDisplayName = GrpName)]
+        [KSPField(isPersistant = true, guiActiveEditor = true, guiName = L + "patternAngle", groupName = GrpFine, groupDisplayName = GrpFineName, groupStartCollapsed = true)]
         [UI_FloatEdit(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, minValue = -90f, maxValue = 90f, incrementLarge = 15f, incrementSmall = 5f, incrementSlide = 5f, sigFigs = 0, unit = "°")]
         public float patternAngle;
 
-        [KSPField(isPersistant = true, guiActiveEditor = true, guiName = L + "tileGap", groupName = Grp, groupDisplayName = GrpName)]
+        [KSPField(isPersistant = true, guiActiveEditor = true, guiName = L + "tileGap", groupName = GrpFine, groupDisplayName = GrpFineName, groupStartCollapsed = true)]
         [UI_FloatEdit(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, minValue = 0f, maxValue = 0.02f, incrementLarge = 0.005f, incrementSmall = 0.001f, incrementSlide = 0.0005f, sigFigs = 4, unit = " m")]
         public float tileGap = 0f; // 1.4: no joint by default; saved decals keep theirs
 
@@ -127,21 +128,16 @@ namespace AblatorDecals
 
         // 1.8: tiles on a smooth revolution hull over ribs, rings and pipes (round tanks, station modules; pipes get a visual skin).
         // Auto-set once on round parents (MakeJob), the player's toggle persists from then on; hidden under a cockpit cover.
-        [KSPField(isPersistant = true, guiActiveEditor = true, guiName = L + "smoothHull", groupName = GrpArea, groupDisplayName = GrpAreaName)]
+        [KSPField(isPersistant = true, guiActiveEditor = true, guiName = L + "smoothHull", groupName = GrpFine, groupDisplayName = GrpFineName, groupStartCollapsed = true)]
         [UI_Toggle(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, enabledText = L + "smoothHull_on", disabledText = L + "smoothHull_off")]
         public bool smoothHull = false;
 
         [KSPField(isPersistant = true)] public bool smoothHullInit = false;
 
-        // plain textures only (atlas textures carry their own per-tile layout)
-        [KSPField(isPersistant = true, guiActiveEditor = true, guiName = L + "mapping", groupName = GrpFine, groupDisplayName = GrpFineName, groupStartCollapsed = true)]
-        [UI_Toggle(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, enabledText = L + "mapping_across", disabledText = L + "mapping_tile")]
-        public bool textureAcross;
+        // 1.11.2: texture mapping/scale removed from PAW (fields stay persistent so legacy saves load unchanged)
+        [KSPField(isPersistant = true)] public bool textureAcross;
 
-        // width of one texture repeat; with "across decal", 0 stretches the texture over the footprint
-        [KSPField(isPersistant = true, guiActiveEditor = true, guiName = L + "textureScale", groupName = GrpFine, groupDisplayName = GrpFineName, groupStartCollapsed = true)]
-        [UI_FloatEdit(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, minValue = 0f, maxValue = 20f, incrementLarge = 1f, incrementSmall = 0.1f, incrementSlide = 0.01f, sigFigs = 2, unit = " m")]
-        public float textureScale = 2f;
+        [KSPField(isPersistant = true)] public float textureScale = 2f;
 
         // share of tiles left out, in percent
         [KSPField(isPersistant = true, guiActiveEditor = true, guiName = L + "tileLoss", groupName = GrpFine, groupDisplayName = GrpFineName, groupStartCollapsed = true)]
@@ -497,7 +493,7 @@ namespace AblatorDecals
             if (HighLogic.LoadedSceneIsEditor)
             {
                 foreach (string f in new[] { nameof(tileSize), nameof(patternAngle), nameof(tileGap), nameof(thickness),
-                             nameof(maxWrap), nameof(coverHeight), nameof(cockpitShape), nameof(tileLoss), nameof(textureAcross), nameof(textureScale),
+                             nameof(maxWrap), nameof(coverHeight), nameof(cockpitShape), nameof(tileLoss),
                              nameof(keepHatches), nameof(keepWindows), nameof(smoothHull) })
                     Fields[f].uiControlEditor.onFieldChanged = OnTweak;
                 Fields[nameof(pattern)].uiControlEditor.onFieldChanged = OnPatternChanged;
@@ -1209,15 +1205,8 @@ namespace AblatorDecals
             textures.Where(t => Fits(t) && Same(t.Finish, Finish)).OrderBy(t => Same(t.Shape, "Any") ? 1 : 0).FirstOrDefault()
             ?? textures.FirstOrDefault(Fits) ?? textures.FirstOrDefault();
 
-        // across/scale only apply to plain textures; true if the visibility changed
-        private bool UpdateTextureUi()
-        {
-            bool plain = texture != null && (!texture.Atlas || texture.PlainOptions);
-            bool changed = Fields[nameof(textureAcross)].guiActiveEditor != plain;
-            Fields[nameof(textureAcross)].guiActiveEditor = plain;
-            Fields[nameof(textureScale)].guiActiveEditor = plain;
-            return changed;
-        }
+        // 1.11.2: textureAcross/textureScale removed from PAW
+        private bool UpdateTextureUi() => false;
 
         private bool UseTileAtlas => texture != null && texture.Atlas &&
             (!texture.PlainOptions || (!textureAcross && Mathf.Approximately(textureScale, 2f)));

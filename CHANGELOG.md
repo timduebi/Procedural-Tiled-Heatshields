@@ -2,6 +2,12 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.11.2 (2026-11-22)
+
+- **Tidied VAB Right-Click Menu (PAW) (`ModuleAblativeDecal.cs`):**
+  - Removed the **Texture** (`textureAcross`) and **Texture scale** (`textureScale`) controls from the PAW completely (fields remain persistent so legacy saves load cleanly).
+  - Hid the redundant **Ablator** readout in VAB (KSP already shows the stock Ablator resource bar) and moved **Parts covered** (flight-only), **Tiles** count, **Pattern angle**, **Joint width**, and **Hull surface** (`smoothHull`) into the collapsed **Fine tuning** group so the main **Tiles** and **Area** groups stay short and focused on everyday controls.
+
 ## 1.11.1 (2026-11-22)
 
 - **PBR Calibration (`ModuleAblativeDecal.cs`, `make-pbr-textures.ps1`, `TileHost.cs`):**

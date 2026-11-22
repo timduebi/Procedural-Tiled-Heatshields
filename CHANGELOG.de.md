@@ -2,6 +2,12 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.11.2 (2026-11-22)
+
+- **Rechtsklick-Menü (PAW) im VAB aufgeräumt (`ModuleAblativeDecal.cs`):**
+  - **Textur** (`textureAcross`) und **Texturmaßstab** (`textureScale`) komplett aus dem PAW entfernt (Felder bleiben rein persistent für bestehende Spielstände).
+  - Doppeltes **Ablator**-Anzeigefeld im VAB ausgeblendet (KSP zeigt ohnehin den Ablator-Ressourcenbalken) und **Kacheln**-Anzahl, **Musterwinkel**, **Fugenbreite** sowie **Rumpffläche** (`smoothHull`) in die zugeklappte Gruppe **Feinheiten** verschoben (**Abgedeckte Teile** nur noch im Flug), sodass oben nur noch **Abgedeckte Fläche** & **Kachelmasse** stehen und die Hauptgruppen **Kacheln** & **Fläche** kompakt und übersichtlich bleiben.
+
 ## 1.11.1 (2026-11-22)
 
 - **PBR-Feinabstimmung (`ModuleAblativeDecal.cs`, `make-pbr-textures.ps1`, `TileHost.cs`):**
