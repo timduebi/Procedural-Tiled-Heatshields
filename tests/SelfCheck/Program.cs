@@ -1852,8 +1852,8 @@ static class Program
             Check(seam < 1e-3f && wrapU <= 3 * du + 1 && wrapV <= 3 * dv + 1,
                 $"v1.10 streaks {style}: seamless (periodic to {seam:E1}; wrap step u {wrapU:F2} / v {wrapV:F2} vs inner {du:F2} / {dv:F2})");
             Check(du > 2 * dv, $"v1.10 streaks {style}: run along V (mean |dA/du| {du:F2} > 2 x |dA/dv| {dv:F2})");
-            Check(max <= 0.70 * 255 && max >= 0.40 * 255 && sd >= 0.03 * 255 && mean >= 0.02 * 255 && mean <= 0.30 * 255,
-                $"v1.10 streaks {style}: moderate alpha (max {max / 255:F2}, mean {mean / 255:F2}, sd {sd / 255:F2})");
+            Check(max <= 0.90 * 255 && max >= 0.40 * 255 && sd >= 0.03 * 255 && mean >= 0.02 * 255 && mean <= 0.35 * 255,
+                $"v1.10 streaks {style}: multi-reentry alpha ceiling (max {max / 255:F2}, mean {mean / 255:F2}, sd {sd / 255:F2})");
         }
     }
 

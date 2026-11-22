@@ -42,13 +42,14 @@ namespace AblatorDecals
                 case StreakStyle.HexBlack:
                 {
                     // broad soft fans, crisp streaks inside them and fine plasma filaments clustered in the fans (feathery)
+                    // 1.11: higher peak ceiling so 1 Kerbin reentry (~amt 0.50) hits ~85 % of the 1.10.1 max and 2+ reentries go much heavier
                     float fan = Streaks(uu, v, 14, 2, 0.55f, 0.60f, 1.1f, seed);
                     float cluster = Streaks(uu, v, 14, 2, 0.80f, 0.60f, 0.6f, seed);           // same fans, wider: where filaments live
                     float crisp = Streaks(uu, v, 44, 2, 0.35f, 0.70f, 1.4f, seed + 1) * (0.25f + 0.75f * cluster);
                     float fil = Streaks(uu, v, 120, 3, 0.30f, 0.65f, 1.2f, seed + 2) * (0.15f + 0.85f * cluster);
-                    float veil = 0.20f * Smooth(0.55f, 0.95f, Noise(uu * 24, v * 2, 24, 2, seed + 3)); // faint ash veil
-                    a = 0.65f * Screen(0.70f * fan, crisp, 0.80f * fil, veil) * (0.45f + 0.55f * patch);
-                    r = Lerp(0.80f, 0.80f, tint); g = Lerp(0.82f, 0.72f, tint); b = Lerp(0.85f, 0.62f, tint); // silver -> warm tan
+                    float veil = 0.24f * Smooth(0.50f, 0.92f, Noise(uu * 24, v * 2, 24, 2, seed + 3)); // faint ash veil
+                    a = 0.95f * Screen(0.76f * fan, crisp, 0.85f * fil, veil) * (0.50f + 0.50f * patch);
+                    r = Lerp(0.82f, 0.80f, tint); g = Lerp(0.84f, 0.71f, tint); b = Lerp(0.87f, 0.60f, tint); // silver -> warm tan
                     break;
                 }
                 case StreakStyle.SquareBlack:
@@ -56,9 +57,9 @@ namespace AblatorDecals
                     // broad soft smoky flow bands, a few medium streaks and elongated soot wisps (Shuttle belly patina)
                     float band = Streaks(uu, v, 8, 1, 0.60f, 0.70f, 0.7f, seed);
                     float mid = Streaks(uu, v, 26, 2, 0.45f, 0.55f, 1.0f, seed + 1);
-                    float wisp = Smooth(0.50f, 0.90f, Noise(uu * 32, v * 6, 32, 6, seed + 2));
-                    a = 0.55f * Screen(0.70f * band, 0.60f * mid, 0.30f * wisp, 0) * (0.45f + 0.55f * patch);
-                    r = Lerp(0.64f, 0.84f, tint); g = Lerp(0.64f, 0.85f, tint); b = Lerp(0.66f, 0.87f, tint); // ash grey -> pale silver
+                    float wisp = Smooth(0.48f, 0.88f, Noise(uu * 32, v * 6, 32, 6, seed + 2));
+                    a = 0.88f * Screen(0.76f * band, 0.68f * mid, 0.36f * wisp, 0) * (0.50f + 0.50f * patch);
+                    r = Lerp(0.64f, 0.85f, tint); g = Lerp(0.64f, 0.86f, tint); b = Lerp(0.66f, 0.88f, tint); // ash grey -> pale silver
                     break;
                 }
                 default:
@@ -67,9 +68,9 @@ namespace AblatorDecals
                     float cluster = Streaks(uu, v, 12, 2, 0.80f, 0.60f, 0.6f, seed);
                     float crisp = Streaks(uu, v, 36, 2, 0.40f, 0.65f, 1.3f, seed + 1) * (0.30f + 0.70f * cluster);
                     float fil = Streaks(uu, v, 90, 3, 0.30f, 0.55f, 1.2f, seed + 2) * (0.20f + 0.80f * cluster);
-                    float wisp = Smooth(0.55f, 0.92f, Noise(uu * 24, v * 6, 24, 6, seed + 3));
-                    a = 0.65f * Screen(0.60f * fan, 0.80f * crisp, 0.60f * fil, 0.25f * wisp) * (0.45f + 0.55f * patch);
-                    r = Lerp(0.10f, 0.14f, tint); g = Lerp(0.08f, 0.11f, tint); b = Lerp(0.07f, 0.09f, tint); // charcoal brown
+                    float wisp = Smooth(0.52f, 0.90f, Noise(uu * 24, v * 6, 24, 6, seed + 3));
+                    a = 0.95f * Screen(0.68f * fan, 0.85f * crisp, 0.68f * fil, 0.30f * wisp) * (0.50f + 0.50f * patch);
+                    r = Lerp(0.08f, 0.13f, tint); g = Lerp(0.07f, 0.10f, tint); b = Lerp(0.06f, 0.08f, tint); // charcoal brown
                     break;
                 }
             }

@@ -7,7 +7,7 @@ using KSP.Localization;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
-[assembly: KSPAssembly("AblatorDecals", 1, 10)]
+[assembly: KSPAssembly("AblatorDecals", 1, 11)]
 
 namespace AblatorDecals
 {
@@ -153,8 +153,9 @@ namespace AblatorDecals
         [UI_FloatRange(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, minValue = 0f, maxValue = 100f, stepIncrement = 5f)]
         public float weathering = 0f;
 
-        // 1.8: tiles shed on hard reentries (low ablator, extreme skin heat); default off in Sandbox, on in Science & Career (OnStart)
-        [KSPField(isPersistant = true, guiActiveEditor = true, guiActive = true, guiName = L + "tileShedding", groupName = GrpFine, groupDisplayName = GrpFineName, groupStartCollapsed = true)]
+        // 1.8/1.11: tiles shed on hard reentries (low ablator, extreme skin heat); off by default in all game modes, placed directly
+        // in the main Tiles group so players can toggle it easily when editing
+        [KSPField(isPersistant = true, guiActiveEditor = true, guiActive = true, guiName = L + "tileShedding", groupName = Grp, groupDisplayName = GrpName)]
         [UI_Toggle(affectSymCounterparts = UI_Scene.None, enabledText = L + "tileShedding_on", disabledText = L + "tileShedding_off")]
         public bool tileShedding = false;
 
@@ -274,7 +275,7 @@ namespace AblatorDecals
         [KSPField] public Vector3 shieldNormal = Vector3.up;
         [KSPField] public float logInterval = 0f;
         [KSPField] public string textureFolder = "AblatorDecals/Textures/";
-        [KSPField] public string shader = "KSP/Emissive/Specular"; // 1.5: _Emissive x _EmissiveColor carries the glow (M1)
+        [KSPField] public string shader = "PBR"; // 1.11: PBR auto-selects TU/Metallic -> Resurfaced/Standard -> Unity Standard -> KSP/Emissive/Specular
         [KSPField] public Vector3 specColor = new Vector3(0.25f, 0.25f, 0.25f);
         [KSPField] public float shininess = 0.35f;
         [KSPField] public Vector3 charColor = new Vector3(0.42f, 0.37f, 0.34f); // tile colour when the ablator is used up
@@ -310,10 +311,13 @@ namespace AblatorDecals
         {
             public string Url, Title;
             public string Shape = "Any"; // Hex | Square | Any
-            public string Finish = "";   // Black | White | Ceramic
+            public string Finish = "";   // Black | White | Ceramic | Steel
             public int Cols, Rows;       // 0 = plain texture
             public bool RandomRotation;
             public string Emissive;      // emission texture url (same atlas layout), null: flat glowFlatColor
+            public string Metallic;      // 1.11: PBR metallic-smoothness map (R = metallic, A = smoothness)
+            public string Bump;          // 1.11: PBR tangent-space normal map (*_NRM)
+            public bool Enabled = true;  // 1.11: False hides finish from editor pickers while keeping legacy saves loadable
             public bool PlainOptions;    // shared ceramic diffuse supports scaled windows and across-hull mapping
             public bool Atlas => Cols > 0 && Rows > 0;
         }
@@ -391,8 +395,9 @@ namespace AblatorDecals
         private readonly List<TexEntry> textures = new List<TexEntry>();
         private TexEntry texture;
         private Texture2D currentTexture;
-        private Texture currentGlow;                  // _Emissive of the tile materials (M1)
-        private Texture2D flatGlow;                   // 1x1 glowFlatColor for patterns without an emission texture
+        private Texture currentGlow;                  // _Emissive / _EmissionMap of the tile materials (M1)
+        private Texture currentMetal, currentBump;    // 1.11: PBR metallic-smoothness and normal maps
+        private Texture2D flatGlow, defaultMetal, defaultBump; // 1x1 fallbacks when an entry omits glow/metallic/bump
         private Material tileTemplate, jointTemplate, backTemplate;
 
         private GameObject decalRoot;                 // part space, under the model; parent of colliders (and editor hosts)
@@ -471,9 +476,9 @@ namespace AblatorDecals
             if (seed < 0) seed = UnityEngine.Random.Range(0, 1000000);
             if (!tileSheddingInit)
             {
-                // first start of this decal: Sandbox off, Science & Career on; the player's toggle persists from then on
+                // 1.11: off by default in all game modes; the player toggles it in the PAW or DecalWindow
                 tileSheddingInit = true;
-                tileShedding = HighLogic.CurrentGame != null && (HighLogic.CurrentGame.Mode == Game.Modes.CAREER || HighLogic.CurrentGame.Mode == Game.Modes.SCIENCE_SANDBOX);
+                tileShedding = false;
             }
 
             InitParentDefaults();
@@ -500,6 +505,7 @@ namespace AblatorDecals
                 Fields[nameof(weathering)].uiControlEditor.onFieldChanged = OnWeatheringChanged; // tint only, no rebuild
                 Fields[nameof(tileShedding)].uiControlEditor.onFieldChanged = (f, o) => CopyToCounterparts();
                 var finishChoose = (UI_ChooseOption)Fields[nameof(finishUi)].uiControlEditor;
+                finishChoose.options = EnabledFinishes();
                 finishChoose.display = finishChoose.options.Select(o => Localizer.Format(L + "finish_" + o.ToLowerInvariant())).ToArray();
                 // with B9PartSwitch its switchers take over pattern and finish (matched by name, no assembly reference)
                 bool b9 = part.Modules.Cast<PartModule>().Any(m => m.moduleName == "ModuleB9PartSwitch");
@@ -556,8 +562,19 @@ namespace AblatorDecals
         private bool SyncSettings()
         {
             SetupPatternOptions();
-            if (finishModule != null) // keep the chooser on one of its options (hand-edited or odd-cased saves)
-                finishModule.finish = ((UI_ChooseOption)Fields[nameof(finishUi)].uiControlEditor).options.FirstOrDefault(o => Same(o, finishModule.finish)) ?? "Black";
+            if (finishModule != null)
+            {
+                // 1.11: keep the chooser on enabled finishes (Textures.cfg); a legacy craft saved with a disabled finish
+                // (e.g. White) keeps its finish until the player switches away, just like legacy Brick
+                var choose = (UI_ChooseOption)Fields[nameof(finishUi)].uiControlEditor;
+                string[] enabled = EnabledFinishes();
+                bool legacyDisabled = !string.IsNullOrEmpty(finishModule.finish) &&
+                    !enabled.Any(o => Same(o, finishModule.finish)) &&
+                    textures.Any(t => Same(t.Finish, finishModule.finish));
+                choose.options = legacyDisabled ? enabled.Append(finishModule.finish).ToArray() : enabled;
+                choose.display = choose.options.Select(o => Localizer.Format(L + "finish_" + o.ToLowerInvariant())).ToArray();
+                finishModule.finish = choose.options.FirstOrDefault(o => Same(o, finishModule.finish)) ?? (enabled.Length > 0 ? enabled[0] : "Black");
+            }
             finishUi = Finish;
             seenPattern = pattern;
             seenFinish = Finish;
@@ -596,6 +613,8 @@ namespace AblatorDecals
                 Destroy(m);
             }
             if (flatGlow != null) Destroy(flatGlow);
+            if (defaultMetal != null) Destroy(defaultMetal);
+            if (defaultBump != null) Destroy(defaultBump);
         }
 
         public void Update()
@@ -693,17 +712,25 @@ namespace AblatorDecals
             decalRoot.transform.SetParent(model, true);
             decalRoot.AddComponent<AblativeDecalTilesMarker>().SetOwner(this);
 
-            Shader s = Shader.Find(shader);
-            if (s == null)
-            {
-                Debug.LogWarning($"[AblatorDecals] shader '{shader}' not found, falling back to KSP/Diffuse");
-                s = Shader.Find("KSP/Diffuse");
-            }
+            Shader s = ResolveTileShader(shader);
             tileTemplate = new Material(s) { name = "AblativeDecalTileTemplate" };
             if (tileTemplate.HasProperty("_SpecColor")) tileTemplate.SetColor("_SpecColor", new Color(specColor.x, specColor.y, specColor.z));
             if (tileTemplate.HasProperty("_Shininess")) tileTemplate.SetFloat("_Shininess", shininess);
+            if (tileTemplate.HasProperty("_Metal")) tileTemplate.SetFloat("_Metal", 1f);
+            if (tileTemplate.HasProperty("_Metallic")) tileTemplate.SetFloat("_Metallic", 1f);
+            if (tileTemplate.HasProperty("_Smoothness")) tileTemplate.SetFloat("_Smoothness", 1f);
+            if (tileTemplate.HasProperty("_GlossMapScale")) tileTemplate.SetFloat("_GlossMapScale", 1f);
+            if (tileTemplate.HasProperty("_BumpScale")) tileTemplate.SetFloat("_BumpScale", 1f);
+            if (tileTemplate.HasProperty("_Opacity")) tileTemplate.SetFloat("_Opacity", 1f);
             if (tileTemplate.HasProperty(TileHost.EmissiveColorID)) tileTemplate.SetColor(TileHost.EmissiveColorID, Color.black);
+            if (tileTemplate.HasProperty(TileHost.EmissionColorID)) tileTemplate.SetColor(TileHost.EmissionColorID, Color.black);
             if (tileTemplate.HasProperty(PhysicsGlobals.TemperaturePropertyID)) tileTemplate.SetColor(PhysicsGlobals.TemperaturePropertyID, Color.clear);
+            if (string.Equals(s.name, "Standard", StringComparison.Ordinal))
+            {
+                tileTemplate.EnableKeyword("_METALLICGLOSSMAP");
+                tileTemplate.EnableKeyword("_NORMALMAP");
+                tileTemplate.EnableKeyword("_EMISSION");
+            }
 
             // joints and undersides: plain diffuse, 1x1 texture
             Shader diffuse = Shader.Find("KSP/Diffuse");
@@ -769,11 +796,13 @@ namespace AblatorDecals
             Vector3 flow = vc != null ? vc.Flow : DefaultFlow;
             appliedFlow = flow;
             bool black = string.Equals(Finish, "Black", StringComparison.OrdinalIgnoreCase);
-            Color charCol = black ? new Color(1.65f, 1.54f, 1.44f) : new Color(0.32f, 0.29f, 0.26f);
-            float colScale = black ? 0.70f : 1f;
+            bool steel = string.Equals(Finish, "Steel", StringComparison.OrdinalIgnoreCase);
+            Color charCol = black ? new Color(1.85f, 1.70f, 1.56f) : steel ? new Color(0.28f, 0.24f, 0.20f) : new Color(0.24f, 0.21f, 0.19f);
+            float colScale = black ? 0.78f : steel ? 0.90f : 0.95f;
             StreakStyle style = !black ? StreakStyle.Soot : Shape == TileShape.Square ? StreakStyle.SquareBlack : StreakStyle.HexBlack;
-            // CharStreaks already caps peak texture alpha at ~0.40-0.47, so strength only trims it gently rather than halving twice
-            float strength = style == StreakStyle.SquareBlack ? 0.85f : 0.95f;
+            // 1.11: CharStreaks peak alpha is ~0.72-0.78; at 1 Kerbin reentry (uni ~0.06) amt ~0.50 -> ~85 % of the 1.10.1 max;
+            // 2+ reentries (uni 0.12-0.25+) climb to amt 0.72-1.0 -> up to ~1.75x stronger veteran scorch
+            float strength = style == StreakStyle.SquareBlack ? 0.92f : 1.00f;
             Texture2D streakTex = null;
             Shader streakSh = null;
             try
@@ -800,7 +829,7 @@ namespace AblatorDecals
                 for (int b = 0; b < h.BinCount; b++)
                 {
                     float dirFactor = directional && b < exp.Length ? 0.35f + 1.15f * exp[b] / maxExposure : 1f;
-                    float amt = Mathf.Clamp01(baseWeath + Mathf.Pow(Mathf.Clamp01(uni * grad * 4.5f * dirFactor), 0.55f));
+                    float amt = Mathf.Clamp01(baseWeath + Mathf.Pow(Mathf.Clamp01(uni * grad * 4.2f * dirFactor), 0.50f));
                     h.SetBinChar(b, Color.Lerp(Color.white, charCol, amt * colScale), amt);
                     h.SetStreakAlpha(b, Mathf.Clamp01(amt * strength));
                 }
@@ -971,12 +1000,90 @@ namespace AblatorDecals
             foreach (var kv in carried) binExposure[kv.Key] = kv.Value;
         }
 
+        private static Shader resolvedTileShader;
+        private static bool loggedTileShader;
+
+        // 1.11: PBR shader lookup (zero hard mod dependencies via reflection on loaded assemblies):
+        // "PBR" tries TU/Metallic (TexturesUnlimited) -> Resurfaced/Standard (Shabby) -> Unity Standard -> KSP/Emissive/Specular.
+        private static Shader ResolveTileShader(string configured)
+        {
+            if (resolvedTileShader != null && (string.IsNullOrEmpty(configured) || Same(configured, "PBR"))) return resolvedTileShader;
+            bool pbr = string.IsNullOrEmpty(configured) || Same(configured, "PBR");
+            Shader s = null;
+            if (!pbr) s = FindModShader(configured);
+            if (s == null)
+            {
+                foreach (string name in new[] { "TU/Metallic", "Resurfaced/Standard", "Standard", "KSP/Emissive/Specular", "KSP/Diffuse" })
+                {
+                    s = FindModShader(name);
+                    if (s != null) break;
+                }
+            }
+            if (s == null) s = Shader.Find("KSP/Diffuse");
+            if (pbr) resolvedTileShader = s;
+            if (!loggedTileShader && s != null)
+            {
+                loggedTileShader = true;
+                Debug.Log($"[AblatorDecals] tile shader: {s.name}");
+            }
+            return s;
+        }
+
+        private static Shader FindModShader(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            Shader s = Shader.Find(name);
+            if (s != null) return s;
+            // TexturesUnlimited (KSPShaderTools.KSPShaderLoader.getShader) and Shabby (Shabby.Shabby.FindShader) load shaders from asset bundles
+            foreach (var asm in AssemblyLoader.loadedAssemblies)
+            {
+                if (asm?.assembly == null) continue;
+                try
+                {
+                    Type tu = asm.assembly.GetType("KSPShaderTools.KSPShaderLoader", false);
+                    if (tu != null)
+                    {
+                        var m = tu.GetMethod("getShader", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static, null, new[] { typeof(string) }, null);
+                        if (m != null && m.Invoke(null, new object[] { name }) is Shader ts && ts != null) return ts;
+                    }
+                    Type sh = asm.assembly.GetType("Shabby.Shabby", false);
+                    if (sh != null)
+                    {
+                        var m = sh.GetMethod("FindShader", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static, null, new[] { typeof(string) }, null);
+                        if (m != null && m.Invoke(null, new object[] { name }) is Shader ss && ss != null) return ss;
+                    }
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        // 1.11: finishes that have at least one enabled ABLATORDECAL_TEXTURE entry in Textures.cfg, in canonical order.
+        // Flipping enabled = False/True in Textures.cfg disables/re-enables a finish in both PAW and DecalWindow without code edits.
+        private static readonly string[] CanonicalFinishes = { "Black", "Ceramic", "White", "Steel" };
+        internal static string[] EnabledFinishes()
+        {
+            ConfigNode[] meta = GameDatabase.Instance != null ? GameDatabase.Instance.GetConfigNodes("ABLATORDECAL_TEXTURE") : null;
+            if (meta == null || meta.Length == 0) return new[] { "Black", "Ceramic", "Steel" };
+            var active = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (ConfigNode n in meta)
+            {
+                if (Same(n.GetValue("enabled"), "false")) continue;
+                string fin = n.GetValue("finish");
+                if (!string.IsNullOrEmpty(fin)) active.Add(fin.Trim());
+            }
+            var ordered = new List<string>();
+            foreach (string c in CanonicalFinishes) if (active.Remove(c)) ordered.Add(c);
+            foreach (string extra in active) ordered.Add(extra);
+            return ordered.Count > 0 ? ordered.ToArray() : new[] { "Black" };
+        }
+
         // Some render mods swap materials/textures on vessel load; put ours back.
         private void GuardMaterials()
         {
             foreach (TileHost h in hosts)
             {
-                if (!h.Alive || h.Intact(currentTexture, currentGlow)) continue;
+                if (!h.Alive || h.Intact(currentTexture, currentGlow, currentMetal, currentBump)) continue;
                 if (h.TargetPart != null && !guardWarned)
                 {
                     // KSP itself copies them: EditorLogic.highlightSelected (renderer.material, slot 0) and MaterialColorUpdater
@@ -984,7 +1091,7 @@ namespace AblatorDecals
                     guardWarned = true;
                     Debug.LogWarning($"[AblatorDecals] {PartName}: tile materials replaced on {(h.TargetPart.partInfo != null ? h.TargetPart.partInfo.name : "?")} ({h.Difference(currentTexture)}), restoring");
                 }
-                h.Restore(currentTexture, currentGlow);
+                h.Restore(currentTexture, currentGlow, currentMetal, currentBump);
             }
         }
 
@@ -1018,11 +1125,17 @@ namespace AblatorDecals
         {
             textures.Clear();
             ConfigNode[] meta = GameDatabase.Instance.GetConfigNodes("ABLATORDECAL_TEXTURE");
-            // emission textures (M1) lie in the same folder but are no tile textures
-            var glows = new HashSet<string>(meta.Select(n => n.GetValue("emissive")).Where(v => !string.IsNullOrEmpty(v)).Select(v => v.Trim()), StringComparer.OrdinalIgnoreCase);
-            foreach (GameDatabase.TextureInfo info in GameDatabase.Instance.GetAllTexturesInFolder(textureFolder).Where(t => !t.isNormalMap && !glows.Contains(t.name)))
+            // emission, metallic and normal maps lie in the same folder but are no diffuse tile textures
+            var aux = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (ConfigNode n in meta)
+                foreach (string key in new[] { "emissive", "metallic", "bump" })
+                {
+                    string v = n.GetValue(key);
+                    if (!string.IsNullOrEmpty(v)) aux.Add(v.Trim());
+                }
+            foreach (GameDatabase.TextureInfo info in GameDatabase.Instance.GetAllTexturesInFolder(textureFolder).Where(t => !t.isNormalMap && !aux.Contains(t.name)))
             {
-                // Several shapes may share their diffuse texture and have different emission atlases.
+                // Several shapes may share their diffuse texture and have different emission/PBR atlases.
                 foreach (ConfigNode node in meta.Where(n => Same(n.GetValue("texture"), info.name)).DefaultIfEmpty())
                 {
                     var e = new TexEntry { Url = info.name, Title = info.name.Substring(info.name.LastIndexOf('/') + 1) };
@@ -1042,8 +1155,13 @@ namespace AblatorDecals
                         }
                         bool.TryParse(node.GetValue("randomRotation"), out e.RandomRotation);
                         bool.TryParse(node.GetValue("plainOptions"), out e.PlainOptions);
+                        if (Same(node.GetValue("enabled"), "false")) e.Enabled = false;
                         string glow = node.GetValue("emissive");
                         if (!string.IsNullOrEmpty(glow)) e.Emissive = glow.Trim();
+                        string metal = node.GetValue("metallic");
+                        if (!string.IsNullOrEmpty(metal)) e.Metallic = metal.Trim();
+                        string bump = node.GetValue("bump");
+                        if (!string.IsNullOrEmpty(bump)) e.Bump = bump.Trim();
                     }
                     textures.Add(e);
                 }
@@ -1117,6 +1235,44 @@ namespace AblatorDecals
             return flatGlow;
         }
 
+        // 1.11: PBR metallic-smoothness atlas (R = metallic, A = smoothness), else matte dielectric 1x1 fallback
+        private Texture FindMetal()
+        {
+            Texture2D t = texture != null && texture.Metallic != null ? GameDatabase.Instance.GetTexture(texture.Metallic, false) : null;
+            if (t != null)
+            {
+                t.wrapMode = UseTileAtlas && !texture.PlainOptions ? TextureWrapMode.Clamp : TextureWrapMode.Repeat;
+                return t;
+            }
+            if (defaultMetal == null)
+            {
+                defaultMetal = new Texture2D(1, 1, TextureFormat.RGBA32, false) { name = "AblativeDecalMetalDefault" };
+                defaultMetal.SetPixel(0, 0, new Color(0.03f, 0.03f, 0.03f, 0.25f));
+                defaultMetal.Apply();
+            }
+            return defaultMetal;
+        }
+
+        // 1.11: PBR tangent-space normal map (*_NRM, DXT5nm), else flat tangent normal 1x1 fallback
+        private Texture FindBump()
+        {
+            Texture2D t = texture != null && texture.Bump != null
+                ? (GameDatabase.Instance.GetTexture(texture.Bump, true) ?? GameDatabase.Instance.GetTexture(texture.Bump, false))
+                : null;
+            if (t != null)
+            {
+                t.wrapMode = UseTileAtlas && !texture.PlainOptions ? TextureWrapMode.Clamp : TextureWrapMode.Repeat;
+                return t;
+            }
+            if (defaultBump == null)
+            {
+                defaultBump = new Texture2D(1, 1, TextureFormat.RGBA32, false) { name = "AblativeDecalBumpDefault" };
+                defaultBump.SetPixel(0, 0, new Color(0.5f, 0.5f, 1f, 0.5f)); // flat normal in both RGB and DXT5nm (G=0.5, A=0.5)
+                defaultBump.Apply();
+            }
+            return defaultBump;
+        }
+
         // ---------- build ----------
 
         private TileSettings MakeSettings()
@@ -1170,7 +1326,13 @@ namespace AblatorDecals
             if (currentTexture != null) currentTexture.wrapMode = UseTileAtlas && !texture.PlainOptions ? TextureWrapMode.Clamp : TextureWrapMode.Repeat;
             tileTemplate.mainTexture = currentTexture;
             currentGlow = FindGlow();
-            if (tileTemplate.HasProperty(TileHost.EmissiveID)) tileTemplate.SetTexture(TileHost.EmissiveID, currentGlow);
+            int emissiveProp = TileHost.EmissiveTexProperty(tileTemplate);
+            if (emissiveProp != 0) tileTemplate.SetTexture(emissiveProp, currentGlow);
+            currentMetal = FindMetal();
+            int metalProp = TileHost.MetalTexProperty(tileTemplate);
+            if (metalProp != 0) tileTemplate.SetTexture(metalProp, currentMetal);
+            currentBump = FindBump();
+            if (tileTemplate.HasProperty(TileHost.BumpMapID)) tileTemplate.SetTexture(TileHost.BumpMapID, currentBump);
 
             Vector3 n = shieldNormal.normalized;
             Vector3 upHint = Mathf.Abs(Vector3.Dot(n, Vector3.forward)) < 0.9f ? Vector3.forward : Vector3.right;
@@ -3332,8 +3494,13 @@ namespace AblatorDecals
             }
         }
 
-        private static string GlowName(Material m) =>
-            TileHost.GlowProperty(m) == TileHost.EmissiveColorID ? "_EmissiveColor" : TileHost.GlowProperty(m) != 0 ? "_TemperatureColor" : "none";
+        private static string GlowName(Material m)
+        {
+            int id = TileHost.GlowProperty(m);
+            return id == TileHost.EmissiveColorID ? "_EmissiveColor"
+                : id == TileHost.EmissionColorID ? "_EmissionColor"
+                : id != 0 ? "_TemperatureColor" : "none";
+        }
 
         // Part.temperatureRenderer (private MaterialColorUpdater) .renderers by reflection; null if KSP renames them
         private static readonly System.Reflection.FieldInfo TempRendererField = typeof(Part).GetField("temperatureRenderer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
@@ -3404,6 +3571,7 @@ namespace AblatorDecals
         internal string FinishValue => Finish;
         internal float TileSizeValue => tileSize;
         internal float ThicknessValue => thickness;
+        internal bool TileSheddingValue { get => tileShedding; set { tileShedding = value; tileSheddingInit = true; } }
 
         // One summary line per heating pass, written after 10 s without absorption.
         private void TrackReentry(double blocked, double skin, double skinMax)

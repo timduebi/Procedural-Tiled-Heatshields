@@ -5,16 +5,16 @@ using UnityEngine;
 
 namespace AblatorDecals
 {
-    // Editor toolbar button: one small window that sets pattern, finish, tile size and thickness on every heat shield decal of the craft.
-    // Single decals stay adjustable in their own menu.
+    // Editor toolbar button: one small window that sets pattern, finish, tile size, thickness and tile shedding on every heat
+    // shield decal of the craft. Single decals stay adjustable in their own menu.
     [KSPAddon(KSPAddon.Startup.EditorAny, false)]
     public class DecalWindow : MonoBehaviour
     {
         private const string L = "#LOC_AblatorDecals_";
         private const string Lock = "AblatorDecalsWindow";
-        private static readonly string[] Patterns = { "Hex", "Square" }, Finishes = { "Black", "Ceramic", "White", "Steel" };
-        // 1.8 presets: localization key suffix, pattern, finish (all 0.10 m tiles, 0.025 m thick)
-        private static readonly string[,] Presets = { { "starship", "Hex", "Black" }, { "shuttle", "Square", "Black" }, { "shuttle_white", "Square", "White" }, { "delta", "Hex", "Steel" } };
+        private static readonly string[] Patterns = { "Hex", "Square" };
+        // 1.8 presets: localization key suffix, pattern, finish (all 0.10 m tiles, 0.025 m thick); filtered by enabled finishes
+        private static readonly string[,] AllPresets = { { "starship", "Hex", "Black" }, { "shuttle", "Square", "Black" }, { "shuttle_white", "Square", "White" }, { "delta", "Hex", "Steel" } };
 
         private ApplicationLauncherButton button;
         private bool show;
@@ -22,14 +22,17 @@ namespace AblatorDecals
         private int pattern, finish;
         private float tileSize = 0.1f;
         private float thickness = 0.025f;
-        private string[] patternNames, finishNames, presetNames;
-        private string titleLabel, patternLabel, finishLabel, tileSizeLabel, thicknessLabel, applyAllLabel, presetsLabel, highlightAllLabel;
+        private bool tileShedding = false; // 1.11: off by default
+        private string[] finishes, patternNames, finishNames, presetNames;
+        private int[] presetIdx;
+        private string titleLabel, patternLabel, finishLabel, tileSizeLabel, thicknessLabel, applyAllLabel, presetsLabel, highlightAllLabel, tileSheddingLabel;
         private bool inputLocked;
 
         private void Start()
         {
+            finishes = ModuleAblativeDecal.EnabledFinishes();
             patternNames = Patterns.Select(p => Localizer.Format(L + "pattern_" + p.ToLowerInvariant())).ToArray();
-            finishNames = Finishes.Select(f => Localizer.Format(L + "finish_" + f.ToLowerInvariant())).ToArray();
+            finishNames = finishes.Select(f => Localizer.Format(L + "finish_" + f.ToLowerInvariant())).ToArray();
             titleLabel = Localizer.Format(L + "app_title");
             patternLabel = Localizer.Format(L + "pattern");
             finishLabel = Localizer.Format(L + "finish");
@@ -38,7 +41,11 @@ namespace AblatorDecals
             applyAllLabel = Localizer.Format(L + "app_applyAll");
             presetsLabel = Localizer.Format(L + "app_presets");
             highlightAllLabel = Localizer.Format(L + "app_highlightAll");
-            presetNames = Enumerable.Range(0, Presets.GetLength(0)).Select(i => Localizer.Format(L + "preset_" + Presets[i, 0])).ToArray();
+            tileSheddingLabel = Localizer.Format(L + "app_tileShedding");
+            presetIdx = Enumerable.Range(0, AllPresets.GetLength(0))
+                .Where(i => finishes.Any(f => string.Equals(f, AllPresets[i, 2], System.StringComparison.OrdinalIgnoreCase)))
+                .ToArray();
+            presetNames = presetIdx.Select(i => Localizer.Format(L + "preset_" + AllPresets[i, 0])).ToArray();
             GameEvents.onGUIApplicationLauncherReady.Add(AddButton);
             if (ApplicationLauncher.Ready) AddButton();
         }
@@ -70,9 +77,10 @@ namespace AblatorDecals
             ModuleAblativeDecal first = Decals().FirstOrDefault();
             if (first == null) return;
             pattern = System.Math.Max(0, System.Array.IndexOf(Patterns, first.PatternValue));
-            finish = System.Math.Max(0, System.Array.IndexOf(Finishes, first.FinishValue));
+            finish = System.Math.Max(0, System.Array.FindIndex(finishes, f => string.Equals(f, first.FinishValue, System.StringComparison.OrdinalIgnoreCase)));
             tileSize = first.TileSizeValue;
             thickness = first.ThicknessValue;
+            tileShedding = first.TileSheddingValue;
         }
 
         private void Close()
@@ -111,21 +119,25 @@ namespace AblatorDecals
             GUILayout.Space(4);
             GUILayout.Label(presetsLabel);
             int preset = GUILayout.SelectionGrid(-1, presetNames, 2);
-            if (preset >= 0)
+            if (preset >= 0 && preset < presetIdx.Length)
             {
-                pattern = System.Array.IndexOf(Patterns, Presets[preset, 1]);
-                finish = System.Array.IndexOf(Finishes, Presets[preset, 2]);
+                int pi = presetIdx[preset];
+                pattern = System.Math.Max(0, System.Array.IndexOf(Patterns, AllPresets[pi, 1]));
+                finish = System.Math.Max(0, System.Array.FindIndex(finishes, f => string.Equals(f, AllPresets[pi, 2], System.StringComparison.OrdinalIgnoreCase)));
                 tileSize = 0.1f;
                 thickness = 0.025f;
             }
             GUILayout.Label(patternLabel);
             pattern = GUILayout.Toolbar(pattern, patternNames);
             GUILayout.Label(finishLabel);
-            finish = GUILayout.SelectionGrid(finish, finishNames, 2);
+            finish = GUILayout.SelectionGrid(finish, finishNames, Mathf.Min(3, Mathf.Max(1, finishNames.Length)));
             GUILayout.Label($"{tileSizeLabel}: {tileSize:F3} m");
             tileSize = Mathf.Round(GUILayout.HorizontalSlider(tileSize, 0.03f, 0.5f) * 200f) / 200f; // 5 mm steps
             GUILayout.Label($"{thicknessLabel}: {thickness:F3} m");
             thickness = Mathf.Round(GUILayout.HorizontalSlider(thickness, 0.005f, 0.3f) * 1000f) / 1000f; // 1 mm steps
+            GUILayout.Space(4);
+            // 1.11: reentry tile loss toggle (off by default)
+            tileShedding = GUILayout.Toggle(tileShedding, tileSheddingLabel);
             GUILayout.Space(6);
             if (GUILayout.Button(applyAllLabel)) ApplyAll();
             GUI.DragWindow();
@@ -134,9 +146,11 @@ namespace AblatorDecals
         private void ApplyAll()
         {
             bool any = false;
+            string fin = finish >= 0 && finish < finishes.Length ? finishes[finish] : "Black";
             foreach (ModuleAblativeDecal m in Decals().ToList())
             {
-                m.ApplyGlobal(Patterns[pattern], Finishes[finish], tileSize, thickness);
+                m.ApplyGlobal(Patterns[pattern], fin, tileSize, thickness);
+                m.TileSheddingValue = tileShedding;
                 any = true;
             }
             if (any) EditorLogic.fetch.SetBackup(); // one undo step; also fires onEditorShipModified

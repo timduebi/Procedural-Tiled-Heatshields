@@ -2,6 +2,19 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.11.0 (2026-11-22)
+
+- **Vollständiges PBR für alle Kachelarten & glänzender Edelstahl (`make-pbr-textures.ps1`, `TileHost.cs`, `ModuleAblativeDecal.cs`):**
+  - Standard-Shader auf `shader = PBR` umgestellt: wählt automatisch **`TU/Metallic`** (TexturesUnlimited), **`Resurfaced/Standard`** (Shabby + Resurfaced), Unity **`Standard`** (auch im reinen Stock-KSP) oder als Fallback `KSP/Emissive/Specular` — mit echten KSP-Umgebungsreflexionen (ReflectionProbe), voller Deferred-Rendering-Unterstützung, Reentry-Glühen (`_Emissive`/`_EmissionMap`) und `Mesh.RecalculateTangents()`.
+  - Komplette PBR-Metallic/Smoothness-Karten (`*_MET.png`, R = Metallic, A = Smoothness) und Normal-Maps (`*_NRM.png` mit Kantenfasen & leichter Kachelneigung) für alle Kachelarten erzeugt sowie `HexSteel.png` & `SquareSteel.png` komplett neu als glänzende Edelstahl-Kacheln (Metallic `0,94–0,99`, Smoothness `0,72–0,96`, dezente `±3°`-Neigung pro Kachel für den typischen Mosaik-Spiegeleffekt) aufgebaut.
+  - Verkohlung senkt nun zusätzlich PBR-Glanz und Metallic-Anteil realistisch Richtung mattem Ruß ab.
+- **Stärkere Mehrflug-Verwitterung (`CharStreaks.cs`, `ModuleAblativeDecal.cs`):**
+  - Verwitterungskurve so abgestimmt, dass ein einzelner Kerbin-Wiedereintritt (`~6 %` Ablatorverbrauch) sicher bei **~85 %** des bisherigen v1.10.1-Maximums liegt und 2+ Wiedereintritte (`12–25 %+`) deutlich darüber hinausgehen (**bis ~1,75× stärker** mit klar sichtbaren Mehrfachflug-Spuren).
+- **Kachelverlust-Schalter im Editor — standardmäßig aus (`ModuleAblativeDecal.cs`, `DecalWindow.cs`):**
+  - **Kachelverlust (Reentry)** (`tileShedding`) ist nun in allen Spielmodi (Sandbox, Wissenschaft, Karriere) standardmäßig **Aus** und als direkter Schalter sowohl in der Hauptgruppe **Kacheln** im PAW als auch im Editor-Fenster (`DecalWindow`) zugänglich.
+- **Weiße Varianten per Config deaktiviert (`Textures.cfg`, `B9PartSwitch.cfg`, `DecalWindow.cs`):**
+  - Alle weißen Varianten (`NASA-Weiß` / `Shuttle Weiß`) überall deaktiviert, ohne Texturen oder Code zu löschen — in `Textures/Textures.cfg` (`enabled = True`) und `Patches/B9PartSwitch.cfg` (Auskommentierung entfernen) jederzeit wieder aktivierbar. Bestehende Schiffe mit weißen Kacheln laden weiterhin problemlos.
+
 ## 1.10.1 (2026-11-22)
 
 - **Fix: Verkohlung (Charring) & Windstreifen nach Wiedereintritt sichtbar (`ModuleAblativeDecal.cs`, `TileHost.cs`):**

@@ -2,6 +2,19 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.11.0 (2026-11-22)
+
+- **Full PBR Materials & Mirror-Gleaming Stainless Steel (`make-pbr-textures.ps1`, `TileHost.cs`, `ModuleAblativeDecal.cs`):**
+  - Switched the default tile shader to `shader = PBR`, which automatically selects **`TU/Metallic`** (TexturesUnlimited), **`Resurfaced/Standard`** (Shabby + Resurfaced), Unity built-in **`Standard`** (pure stock KSP), or falls back to `KSP/Emissive/Specular` — with full KSP ReflectionProbe cubemap reflections, Deferred Rendering compatibility, per-tile reentry glow (`_Emissive`/`_EmissionMap`), and `Mesh.RecalculateTangents()`.
+  - Generated full PBR Metallic-Smoothness (`*_MET.png`, R = Metallic, A = Smoothness) and tangent-space beveled Normal maps (`*_NRM.png`) for all finishes (`Black`, `Steel`, `Ceramic`, `White`), and rebuilt `HexSteel.png` & `SquareSteel.png` into clean, gleaming brushed/polished 304L stainless-steel panels (per-tile reflectance, smoothness `0.72–0.96`, metallic `0.94–0.99`, and subtle `±3°` per-tile normal tilt for authentic mirror-mosaic shimmer).
+  - Charring now also fades PBR smoothness and metalness toward matte scorch under heavy soot.
+- **Multi-Reentry Weathering Curve (`CharStreaks.cs`, `ModuleAblativeDecal.cs`):**
+  - Calibrated weathering so a single Kerbin reentry (`~6 %` ablator) reliably reaches **~85 %** of the v1.10.1 max look, while 2+ reentries (`12–25 %+` ablator) build up **up to ~1.75× stronger** heavy veteran scorch streaks and ash/soot patina.
+- **Reentry Tile Loss Toggle — Off by Default (`ModuleAblativeDecal.cs`, `DecalWindow.cs`):**
+  - `Reentry tile loss` (`tileShedding`) now defaults to **Off** across all game modes (Sandbox, Science, Career) and is placed directly in the main **Tiles** PAW group as well as in the Editor toolbar window (`DecalWindow`).
+- **White Variants Disabled via Config (`Textures.cfg`, `B9PartSwitch.cfg`, `DecalWindow.cs`):**
+  - Disabled `NASA White` (`HexWhite`, `SquareWhite`) and the `Shuttle White` preset everywhere without deleting any textures or code — flip `enabled = True` in `Textures/Textures.cfg` (and uncomment the `White` `SUBTYPE` in `Patches/B9PartSwitch.cfg`) to re-enable them at any time. Legacy crafts saved with White continue loading cleanly.
+
 ## 1.10.1 (2026-11-22)
 
 - **Fixed Reentry Charring & Streak Overlay Not Appearing in Flight (`ModuleAblativeDecal.cs`, `TileHost.cs`):**

@@ -46,8 +46,8 @@ namespace AblatorDecals
 
         // host space -> decal space at build time (a flap host: decal space with the flap in neutral position)
         private Matrix4x4 hostToDecal = Matrix4x4.identity;
-        private int glowPropId;
-        private bool hasEmissiveTex;
+        private int glowPropId, emissiveTexProp, metalTexProp;
+        private bool hasBump, hasMetal, hasSmoothness, hasGlossMapScale;
         // 1.9: the template's specular colour; charred tiles fade towards matte scorch
         private Color baseSpecColor = Color.gray;
         private bool hasSpecColor;
@@ -111,6 +111,7 @@ namespace AblatorDecals
             Mesh.SetTriangles(t.JointTriangles, bins);
             Mesh.SetTriangles(t.BackTriangles, bins + 1);
             Mesh.RecalculateBounds();
+            Mesh.RecalculateTangents(); // 1.11: required for PBR tangent-space normal maps (_BumpMap)
 
             DestroyMaterials();
             Materials = new Material[bins + 2];
@@ -120,7 +121,12 @@ namespace AblatorDecals
             Renderer.sharedMaterials = Materials;
 
             glowPropId = bins > 0 ? GlowProperty(Materials[0]) : 0;
-            hasEmissiveTex = bins > 0 && Materials[0].HasProperty(EmissiveID);
+            emissiveTexProp = bins > 0 ? EmissiveTexProperty(Materials[0]) : 0;
+            metalTexProp = bins > 0 ? MetalTexProperty(Materials[0]) : 0;
+            hasBump = bins > 0 && Materials[0].HasProperty(BumpMapID);
+            hasMetal = bins > 0 && Materials[0].HasProperty(MetalID);
+            hasSmoothness = bins > 0 && Materials[0].HasProperty(SmoothnessID);
+            hasGlossMapScale = bins > 0 && Materials[0].HasProperty(GlossMapScaleID);
 
             GlowSet = new Color[bins];
             for (int i = 0; i < bins; i++) SetBinGlow(i, Dark);
@@ -151,15 +157,27 @@ namespace AblatorDecals
             if (mc != null) mc.enabled = on;
         }
 
-        // 1.5 (M1): the glow goes into _EmissiveColor (KSP/Emissive/*: _Emissive texture x _EmissiveColor, per tile a soft core
-        // to rim gradient); a shader without it falls back to _TemperatureColor (flat per bin, as up to 1.4)
+        // 1.5 (M1): the glow goes into _EmissiveColor (KSP/Emissive/*, TU/Metallic, Resurfaced/Standard) or _EmissionColor
+        // (Unity Standard); a shader without either falls back to _TemperatureColor (flat per bin, as up to 1.4)
         public static readonly int EmissiveColorID = Shader.PropertyToID("_EmissiveColor"), EmissiveID = Shader.PropertyToID("_Emissive");
+        public static readonly int EmissionColorID = Shader.PropertyToID("_EmissionColor"), EmissionMapID = Shader.PropertyToID("_EmissionMap");
+        public static readonly int MetallicGlossMapID = Shader.PropertyToID("_MetallicGlossMap"), MetalMapID = Shader.PropertyToID("_MetalMap");
+        public static readonly int BumpMapID = Shader.PropertyToID("_BumpMap"), MetalID = Shader.PropertyToID("_Metal");
+        public static readonly int SmoothnessID = Shader.PropertyToID("_Smoothness"), GlossMapScaleID = Shader.PropertyToID("_GlossMapScale");
         public bool HasGlow => BinCount > 0 && glowPropId != 0;
         public static int GlowProperty(Material m) =>
-            m.HasProperty(EmissiveColorID) ? EmissiveColorID : m.HasProperty(PhysicsGlobals.TemperaturePropertyID) ? PhysicsGlobals.TemperaturePropertyID : 0;
+            m.HasProperty(EmissiveColorID) ? EmissiveColorID
+            : m.HasProperty(EmissionColorID) ? EmissionColorID
+            : m.HasProperty(PhysicsGlobals.TemperaturePropertyID) ? PhysicsGlobals.TemperaturePropertyID : 0;
+        public static int EmissiveTexProperty(Material m) =>
+            m.HasProperty(EmissiveID) ? EmissiveID
+            : m.HasProperty(EmissionMapID) ? EmissionMapID : 0;
+        public static int MetalTexProperty(Material m) =>
+            m.HasProperty(MetallicGlossMapID) ? MetallicGlossMapID
+            : m.HasProperty(MetalMapID) ? MetalMapID : 0;
 
         // true while the renderer still holds our materials with our textures
-        public bool Intact(Texture tex, Texture glow)
+        public bool Intact(Texture tex, Texture glow, Texture metal = null, Texture bump = null)
         {
             if (Renderer == null) return false;
             Material[] now = Renderer.sharedMaterials;
@@ -169,7 +187,9 @@ namespace AblatorDecals
             for (int i = 0; i < BinCount; i++)
             {
                 if (tex != null && Materials[i].mainTexture != tex) return false;
-                if (glow != null && hasEmissiveTex && Materials[i].GetTexture(EmissiveID) != glow) return false;
+                if (glow != null && emissiveTexProp != 0 && Materials[i].GetTexture(emissiveTexProp) != glow) return false;
+                if (metal != null && metalTexProp != 0 && Materials[i].GetTexture(metalTexProp) != metal) return false;
+                if (bump != null && hasBump && Materials[i].GetTexture(BumpMapID) != bump) return false;
             }
             return true;
         }
@@ -186,7 +206,7 @@ namespace AblatorDecals
             return $"texture '{(BinCount > 0 && Materials[0].mainTexture != null ? Materials[0].mainTexture.name : "null")}' instead of '{(tex != null ? tex.name : "null")}'";
         }
 
-        public void Restore(Texture tex, Texture glow)
+        public void Restore(Texture tex, Texture glow, Texture metal = null, Texture bump = null)
         {
             if (Renderer == null) return;
             Material[] old = Renderer.sharedMaterials;
@@ -203,7 +223,9 @@ namespace AblatorDecals
             for (int i = 0; i < BinCount; i++)
             {
                 Materials[i].mainTexture = tex;
-                if (glow != null && Materials[i].HasProperty(EmissiveID)) Materials[i].SetTexture(EmissiveID, glow);
+                if (glow != null && emissiveTexProp != 0) Materials[i].SetTexture(emissiveTexProp, glow);
+                if (metal != null && metalTexProp != 0) Materials[i].SetTexture(metalTexProp, metal);
+                if (bump != null && hasBump) Materials[i].SetTexture(BumpMapID, bump);
             }
         }
 
@@ -213,14 +235,18 @@ namespace AblatorDecals
             for (int i = 0; i < BinCount; i++) SetBinChar(i, c, charAmt);
         }
 
-        // 1.8: per-bin char (directional soot: windward bins darker); 1.9: the specular fades to matte scorch with charAmt
+        // 1.8: per-bin char (directional soot: windward bins darker); 1.9/1.11: specular and PBR smoothness/metalness fade towards matte scorch with charAmt
         public void SetBinChar(int bin, Color c, float charAmt = 0f)
         {
             if (Go == null || bin < 0 || bin >= BinCount || bin >= Materials.Length) return;
             Material m = Materials[bin];
             if (m == null) return;
             if (m.HasProperty("_Color")) m.SetColor("_Color", c);
-            if (hasSpecColor && m.HasProperty("_SpecColor")) m.SetColor("_SpecColor", Color.Lerp(baseSpecColor, MatteScorch, Mathf.Clamp01(charAmt * 0.9f)));
+            float t = Mathf.Clamp01(charAmt * 0.9f);
+            if (hasSpecColor && m.HasProperty("_SpecColor")) m.SetColor("_SpecColor", Color.Lerp(baseSpecColor, MatteScorch, t));
+            if (hasSmoothness) m.SetFloat(SmoothnessID, Mathf.Lerp(1f, 0.14f, t));
+            if (hasGlossMapScale) m.SetFloat(GlossMapScaleID, Mathf.Lerp(1f, 0.14f, t));
+            if (hasMetal) m.SetFloat(MetalID, Mathf.Lerp(1f, 0.30f, Mathf.Clamp01(charAmt * 0.85f)));
         }
 
         // 1.7.1: the joint material glows too (KSP/Emissive/Diffuse), one colour per host
@@ -244,7 +270,9 @@ namespace AblatorDecals
             foreach (Material m in Materials) if (m != null) Object.Destroy(m);
             Materials = new Material[0];
             glowPropId = 0;
-            hasEmissiveTex = false;
+            emissiveTexProp = 0;
+            metalTexProp = 0;
+            hasBump = hasMetal = hasSmoothness = hasGlossMapScale = false;
         }
 
         // ---------- 1.10 reentry streaks ----------
