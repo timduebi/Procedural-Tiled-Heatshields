@@ -796,12 +796,28 @@ namespace AblatorDecals
             Vector3 flow = vc != null ? vc.Flow : DefaultFlow;
             appliedFlow = flow;
             bool black = string.Equals(Finish, "Black", StringComparison.OrdinalIgnoreCase);
+            bool ceramic = string.Equals(Finish, "Ceramic", StringComparison.OrdinalIgnoreCase);
             bool steel = string.Equals(Finish, "Steel", StringComparison.OrdinalIgnoreCase);
-            Color charCol = black ? new Color(1.85f, 1.70f, 1.56f) : steel ? new Color(0.28f, 0.24f, 0.20f) : new Color(0.24f, 0.21f, 0.19f);
-            float colScale = black ? 0.78f : steel ? 0.90f : 0.95f;
-            StreakStyle style = !black ? StreakStyle.Soot : Shape == TileShape.Square ? StreakStyle.SquareBlack : StreakStyle.HexBlack;
-            // 1.11: CharStreaks peak alpha is ~0.72-0.78; at 1 Kerbin reentry (uni ~0.06) amt ~0.50 -> ~85 % of the 1.10.1 max;
-            // 2+ reentries (uni 0.12-0.25+) climb to amt 0.72-1.0 -> up to ~1.75x stronger veteran scorch
+            bool darkShield = black || ceramic;
+            bool pbr = tileTemplate != null && tileTemplate.shader != null &&
+                !tileTemplate.shader.name.StartsWith("KSP/Emissive", StringComparison.Ordinal) &&
+                !tileTemplate.shader.name.StartsWith("KSP/Diffuse", StringComparison.Ordinal);
+            // 1.11.1: KSP runs in Gamma space, so under PBR (TU/Metallic, Standard + Deferred) the dark tile textures need
+            // a deeper base multiplier to render true jet-black/charcoal like renders/02_tile_variants.png instead of grey-brown
+            Color baseCol = !pbr ? Color.white
+                : black ? (Shape == TileShape.Square ? new Color(0.56f, 0.57f, 0.59f) : new Color(0.42f, 0.43f, 0.45f))
+                : ceramic ? new Color(0.48f, 0.49f, 0.52f)
+                : Color.white;
+            // Black & Plain Ceramic lift gently toward warm ash + silver-ash wind streaks; Steel stays brushed metallic with
+            // subtle warm matte oxidation tint while dark soot streaks carry the scorch look
+            Color charCol = black ? (pbr ? (Shape == TileShape.Square ? new Color(1.02f, 0.94f, 0.87f) : new Color(0.82f, 0.75f, 0.69f)) : new Color(1.85f, 1.70f, 1.56f))
+                : ceramic ? (pbr ? new Color(0.90f, 0.83f, 0.77f) : new Color(1.75f, 1.62f, 1.50f))
+                : steel ? new Color(0.84f, 0.79f, 0.73f)
+                : new Color(0.28f, 0.25f, 0.22f);
+            float colScale = darkShield ? 0.78f : steel ? 0.65f : 0.92f;
+            StreakStyle style = !darkShield ? StreakStyle.Soot : Shape == TileShape.Square ? StreakStyle.SquareBlack : StreakStyle.HexBlack;
+            // 1.11: CharStreaks peak alpha is ~0.69-0.72; at 1 Kerbin reentry (uni ~0.06) amt ~0.50 -> ~85 % of the 1.10.1 max;
+            // 2+ reentries (uni 0.12-0.25+) climb to amt 0.72-1.0 -> up to ~1.7x stronger veteran scorch
             float strength = style == StreakStyle.SquareBlack ? 0.92f : 1.00f;
             Texture2D streakTex = null;
             Shader streakSh = null;
@@ -830,7 +846,7 @@ namespace AblatorDecals
                 {
                     float dirFactor = directional && b < exp.Length ? 0.35f + 1.15f * exp[b] / maxExposure : 1f;
                     float amt = Mathf.Clamp01(baseWeath + Mathf.Pow(Mathf.Clamp01(uni * grad * 4.2f * dirFactor), 0.50f));
-                    h.SetBinChar(b, Color.Lerp(Color.white, charCol, amt * colScale), amt);
+                    h.SetBinChar(b, Color.Lerp(baseCol, charCol, amt * colScale), amt);
                     h.SetStreakAlpha(b, Mathf.Clamp01(amt * strength));
                 }
                 if (streakTex != null && streakSh != null) h.EnsureStreaks(streakTex, streakSh, root, flow);
@@ -1034,16 +1050,17 @@ namespace AblatorDecals
             if (string.IsNullOrEmpty(name)) return null;
             Shader s = Shader.Find(name);
             if (s != null) return s;
-            // TexturesUnlimited (KSPShaderTools.KSPShaderLoader.getShader) and Shabby (Shabby.Shabby.FindShader) load shaders from asset bundles
+            // TexturesUnlimited (KSPShaderTools.TexturesUnlimitedLoader.getShader) and Shabby (Shabby.Shabby.FindShader) load shaders from asset bundles
             foreach (var asm in AssemblyLoader.loadedAssemblies)
             {
                 if (asm?.assembly == null) continue;
                 try
                 {
-                    Type tu = asm.assembly.GetType("KSPShaderTools.KSPShaderLoader", false);
+                    Type tu = asm.assembly.GetType("KSPShaderTools.TexturesUnlimitedLoader", false)
+                           ?? asm.assembly.GetType("KSPShaderTools.KSPShaderLoader", false);
                     if (tu != null)
                     {
-                        var m = tu.GetMethod("getShader", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static, null, new[] { typeof(string) }, null);
+                        var m = tu.GetMethod("getShader", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static, null, new[] { typeof(string) }, null);
                         if (m != null && m.Invoke(null, new object[] { name }) is Shader ts && ts != null) return ts;
                     }
                     Type sh = asm.assembly.GetType("Shabby.Shabby", false);

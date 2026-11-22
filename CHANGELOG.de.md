@@ -2,6 +2,16 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.11.1 (2026-11-22)
+
+- **PBR-Feinabstimmung (`ModuleAblativeDecal.cs`, `make-pbr-textures.ps1`, `TileHost.cs`):**
+  - `TexturesUnlimited`-Lookup auf `KSPShaderTools.TexturesUnlimitedLoader.getShader("TU/Metallic")` korrigiert, damit **`TU/Metallic`** statt des `Standard`-Fallbacks geladen wird.
+  - PBR-Grundtöne für **Schwarz** (`HexBlack` / `SquareBlack`) und **Schlichte Keramik** (`Ceramic`) kalibriert, sodass schwarze Kacheln auch im KSP-PBR wieder tiefschwarz / anthrazit wie in `renders/02_tile_variants.png` aussehen statt grau-braun.
+  - **Edelstahl** (`HexSteel` / `SquareSteel`) auf gleichmäßig gebürsteten Satin-Stahl mit **einheitlicher Reflektivität über alle Kacheln** (`Metallic = 0,84`, `Smoothness = 0,62`, keine zufällige Kachel-Kippung / kein Spiegel-Discokugel-Effekt mehr) abgestimmt.
+- **Verwitterungsstreifen auf Schlichter Keramik & Edelstahl-Ruß (`ModuleAblativeDecal.cs`):**
+  - **Schlichte Keramik** erhält nun ebenfalls die hellen, windgerichteten Asche-Streifen (statt unsichtbarem Schwarz-auf-Schwarz).
+  - **Edelstahl-Verwitterung** bewahrt den hellen gebürsteten Metall-Grundton (nur leichte warme Matt-Oxidation) mit klar sichtbaren dunklen Rußstreifen (`Soot`) darüber.
+
 ## 1.11.0 (2026-11-22)
 
 - **Vollständiges PBR für alle Kachelarten & glänzender Edelstahl (`make-pbr-textures.ps1`, `TileHost.cs`, `ModuleAblativeDecal.cs`):**

@@ -244,9 +244,9 @@ namespace AblatorDecals
             if (m.HasProperty("_Color")) m.SetColor("_Color", c);
             float t = Mathf.Clamp01(charAmt * 0.9f);
             if (hasSpecColor && m.HasProperty("_SpecColor")) m.SetColor("_SpecColor", Color.Lerp(baseSpecColor, MatteScorch, t));
-            if (hasSmoothness) m.SetFloat(SmoothnessID, Mathf.Lerp(1f, 0.14f, t));
-            if (hasGlossMapScale) m.SetFloat(GlossMapScaleID, Mathf.Lerp(1f, 0.14f, t));
-            if (hasMetal) m.SetFloat(MetalID, Mathf.Lerp(1f, 0.30f, Mathf.Clamp01(charAmt * 0.85f)));
+            if (hasSmoothness) m.SetFloat(SmoothnessID, Mathf.Lerp(1f, 0.22f, t));
+            if (hasGlossMapScale) m.SetFloat(GlossMapScaleID, Mathf.Lerp(1f, 0.22f, t));
+            if (hasMetal) m.SetFloat(MetalID, Mathf.Lerp(1f, 0.55f, Mathf.Clamp01(charAmt * 0.85f)));
         }
 
         // 1.7.1: the joint material glows too (KSP/Emissive/Diffuse), one colour per host

@@ -2,6 +2,16 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.11.1 (2026-11-22)
+
+- **PBR Calibration (`ModuleAblativeDecal.cs`, `make-pbr-textures.ps1`, `TileHost.cs`):**
+  - Fixed `TexturesUnlimited` shader lookup to target `KSPShaderTools.TexturesUnlimitedLoader.getShader("TU/Metallic")` so `TU/Metallic` actually activates instead of falling back to Unity `Standard`.
+  - Calibrated PBR base colors for **Black** (`HexBlack` / `SquareBlack`) and **Plain Ceramic** (`Ceramic`) so tiles render true deep jet-black / charcoal matching `renders/02_tile_variants.png` instead of washed-out grey-brown in KSP's Gamma PBR pipeline.
+  - Made **Stainless Steel** (`HexSteel` / `SquareSteel`) clean, cohesive brushed satin steel with **uniform reflectivity across all tiles** (`Metallic = 0.84`, `Smoothness = 0.62`, zero per-tile mirror normal tilt — eliminating the disco-ball reflection look).
+- **Weathering Streaks on Plain Ceramic & Refined Steel Scorch (`ModuleAblativeDecal.cs`):**
+  - **Plain Ceramic** now receives the same pale ash-silver wind-aligned reentry streaks (`HexBlack`/`SquareBlack`) as Black tiles instead of invisible dark-on-dark soot.
+  - **Stainless Steel** weathering now keeps its bright brushed metallic base (subtle warm matte oxidation tint + softened smoothness) with crisp dark charcoal-brown soot streaks (`Soot`) streaming across the tiles.
+
 ## 1.11.0 (2026-11-22)
 
 - **Full PBR Materials & Mirror-Gleaming Stainless Steel (`make-pbr-textures.ps1`, `TileHost.cs`, `ModuleAblativeDecal.cs`):**

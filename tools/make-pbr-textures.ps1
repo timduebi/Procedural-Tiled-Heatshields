@@ -1,6 +1,6 @@
-﻿# Generates gleaming stainless-steel tile atlases (HexSteel, SquareSteel) and full PBR Metallic-Smoothness (*_MET.png: R=Metallic, A=Smoothness)
+﻿# Generates clean brushed stainless-steel tile atlases (HexSteel, SquareSteel) and full PBR Metallic-Smoothness (*_MET.png: R=Metallic, A=Smoothness)
 # plus tangent-space Normal maps (*_NRM.png: KSP auto-converts *_NRM to DXT5nm) for all finishes (Black, Steel, Ceramic, White).
-# Deterministic. Does not touch HexBlack/SquareBlack/HexWhite/SquareWhite/Ceramic diffuse PNGs.
+# Calibrated to match renders/02_tile_variants.png: uniform brushed-steel reflectivity (no mirror disco-ball tilt) and crisp beveled tile seams.
 param([string]$OutDir)
 if (-not $OutDir) { $OutDir = Join-Path $PSScriptRoot '..\GameData\AblatorDecals\Textures' }
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Force $OutDir | Out-Null }
@@ -67,7 +67,6 @@ public static class PbrMaps
         return p;
     }
 
-    // Signed distance inside cell (in pixels of a `cell`-sized cell): >0 inside tile, <=0 outside / seam
     static double TileDist(bool hex, double lx, double ly, int cell, out double gx, out double gy)
     {
         double half = (cell - 1) * 0.5;
@@ -112,20 +111,19 @@ public static class PbrMaps
         }
     }
 
-    // Gleaming PBR Stainless Steel Albedo (1024x1024, 4x4 cells). Clean mirror-steel panels (no part numbers!),
-    // distinct per-tile F0 reflectance variation (gunmetal -> polished silver) + subtle warm/cool steel tint + crisp dark bevel seam.
+    // Brushed Stainless Steel Albedo (1024x1024, 4x4 cells): cohesive brushed 304L steel matching renders/02_tile_variants.png,
+    // subtle per-tile tonal variation (0.50..0.72), fine horizontal brushing, thin dark seam, no part numbers.
     public static void MakeSteelAlbedo(string path, bool hex, int seed)
     {
         const int Size = 1024, Cells = 4, Cell = 256;
         var rnd = new Random(seed);
         int[] perm = Shuffled(rnd, 16);
-        double[] tileRefl = new double[16];
+        double[] tileTone = new double[16];
         double[] tileWarm = new double[16];
         for (int i = 0; i < 16; i++)
         {
-            // Range 0.56..0.94 so individual hex tiles catch dramatic bright/dark reflections like stamped stainless panels
-            tileRefl[perm[i]] = 0.56 + 0.38 * (i / 15.0);
-            tileWarm[i] = (rnd.NextDouble() * 2 - 1) * 0.045; // subtle warm champagne <-> cool chrome tint
+            tileTone[perm[i]] = 0.50 + 0.22 * (i / 15.0);
+            tileWarm[i] = (rnd.NextDouble() * 2 - 1) * 0.025; // subtle warm-steel <-> cool-steel tint
         }
 
         byte[] px = new byte[Size * Size * 4];
@@ -133,10 +131,8 @@ public static class PbrMaps
         {
             int cx = c % Cells, cy = c / Cells;
             int cs = seed * 1000 + c * 17;
-            double baseRefl = tileRefl[c];
+            double baseTone = tileTone[c];
             double warm = tileWarm[c];
-            double brushAngle = (rnd.NextDouble() * 2 - 1) * 0.15; // slight per-tile brush direction variance
-            double ca = Math.Cos(brushAngle), sa = Math.Sin(brushAngle);
 
             for (int ly = 0; ly < Cell; ly++)
             for (int lx = 0; lx < Cell; lx++)
@@ -145,23 +141,21 @@ public static class PbrMaps
                 double d = TileDist(hex, lx, ly, Cell, out gx, out gy);
                 int ex = Math.Min(Math.Min(lx, ly), Math.Min(Cell - 1 - lx, Cell - 1 - ly));
 
-                double ux = lx * ca - ly * sa, uy = lx * sa + ly * ca;
-                double brush = Noise(ux / 85.0, uy / 1.8, cs + 1) * 0.65 + Noise(ux / 28.0, uy / 0.9, cs + 2) * 0.35;
-                double blotch = Noise(lx / 55.0, ly / 55.0, cs + 3);
+                double brush = Noise(lx / 85.0, ly / 1.8, cs + 1) * 0.65 + Noise(lx / 28.0, ly / 0.9, cs + 2) * 0.35;
+                double blotch = Noise(lx / 60.0, ly / 60.0, cs + 3);
                 double grain = Lat(lx, ly, cs + 4) - 0.5;
 
-                // Very crisp thin dark seam at the edge of each tile (so tiles read clearly even at gap=0)
-                double seam = 1.0 - Smooth(1.5, 4.2, d);
+                double seam = 1.0 - Smooth(1.5, 4.5, d);
                 if (ex < 2) seam = 1.0;
 
-                double body = baseRefl * (1.0 + (brush - 0.5) * 0.10 + (blotch - 0.5) * 0.06 + grain * 0.02);
-                double rimCol = 0.14;
+                double body = baseTone * (1.0 + (brush - 0.5) * 0.12 + (blotch - 0.5) * 0.06 + grain * 0.02);
+                double rimCol = 0.18;
                 double v = Lerp(body, rimCol, seam);
 
                 double r = Clamp01(v * (1.0 + warm));
                 double g = Clamp01(v * (1.0 + warm * 0.35));
-                double b = Clamp01(v * (1.0 - warm * 0.85 + 0.015)); // slight cool stainless bias
-                double a = Clamp01(Lerp(0.84, 0.20, seam)); // alpha also carries gloss for legacy fallback
+                double b = Clamp01(v * (1.0 - warm * 0.75 + 0.01));
+                double a = Clamp01(Lerp(0.64, 0.20, seam));
 
                 int i0 = ((cy * Cell + ly) * Size + cx * Cell + lx) * 4;
                 px[i0] = ToByte(b);
@@ -175,7 +169,7 @@ public static class PbrMaps
 
     // PBR Atlas Maps (512x512, 4x4 cells of 128 px):
     //   metPath -> R=G=B=Metallic, A=Smoothness (exact TU/Metallic, Resurfaced/Standard, Unity Standard layout)
-    //   nrmPath -> RGB tangent-space normal (X->R, Y->G [OpenGL/Unity +Y up], Z->B), saved as *_NRM.png so KSP converts to DXT5nm
+    //   nrmPath -> RGB tangent-space normal (*_NRM.png -> KSP auto-converts to DXT5nm); ZERO random per-tile tilt (no disco ball!)
     // finish: 0 = Black, 1 = White, 2 = Steel
     public static void MakeAtlasPbr(string metPath, string nrmPath, bool hex, int finish, int seed)
     {
@@ -189,39 +183,32 @@ public static class PbrMaps
 
         double[] cellSmooth = new double[16];
         double[] cellMetal = new double[16];
-        double[] tiltX = new double[16], tiltY = new double[16];
         for (int i = 0; i < 16; i++)
         {
             double t = i / 15.0;
             if (steel)
             {
-                // Dramatic per-tile smoothness: satin brushed (0.72) up to near-mirror chrome (0.96)
-                cellSmooth[permS[i]] = 0.72 + 0.24 * t;
-                cellMetal[permS[i]] = 0.94 + 0.05 * t;
+                // Uniform brushed-satin stainless steel reflectivity across ALL tiles (not mirrors!)
+                cellSmooth[permS[i]] = 0.62;
+                cellMetal[permS[i]] = 0.84;
             }
             else if (squareBlack)
             {
-                // Shuttle HRSI RCG borosilicate glaze: glossy-satin with distinct tile-to-tile sheen
-                cellSmooth[permS[i]] = 0.44 + 0.24 * t;
-                cellMetal[permS[i]] = 0.03;
+                // Shuttle HRSI RCG borosilicate glaze: subtle satin-gloss sheen on deep black ceramic
+                cellSmooth[permS[i]] = 0.34 + 0.18 * t;
+                cellMetal[permS[i]] = 0.05;
             }
             else if (white)
             {
-                cellSmooth[permS[i]] = 0.20 + 0.14 * t;
-                cellMetal[permS[i]] = 0.01;
+                cellSmooth[permS[i]] = 0.22 + 0.12 * t;
+                cellMetal[permS[i]] = 0.02;
             }
             else
             {
-                // Starship Hex Black TUFROC ceramic: semi-matte with subtle specular variation
-                cellSmooth[permS[i]] = 0.26 + 0.20 * t;
-                cellMetal[permS[i]] = 0.04;
+                // Starship Hex Black TUFROC carbon ceramic: matte-satin deep black
+                cellSmooth[permS[i]] = 0.24 + 0.14 * t;
+                cellMetal[permS[i]] = 0.05;
             }
-            // Per-tile micro-tilt: stronger on stamped steel panels (±3.0 deg -> sin ≈ 0.052) for mosaic shimmer!
-            double maxTilt = steel ? 0.055 : 0.018;
-            double ang = rnd.NextDouble() * Math.PI * 2.0;
-            double mag = (0.35 + 0.65 * rnd.NextDouble()) * maxTilt;
-            tiltX[i] = Math.Cos(ang) * mag;
-            tiltY[i] = Math.Sin(ang) * mag;
         }
 
         byte[] metPx = new byte[Size * Size * 4];
@@ -231,9 +218,8 @@ public static class PbrMaps
         {
             int cx = c % Cells, cy = c / Cells;
             int cs = seed * 1000 + c * 23;
-            double sm0 = cellSmooth[c] - (squareBlack && odd[c] ? 0.14 : 0.0);
+            double sm0 = cellSmooth[c] - (squareBlack && odd[c] ? 0.10 : 0.0);
             double mt0 = cellMetal[c];
-            double tx = tiltX[c], ty = tiltY[c];
 
             for (int ly = 0; ly < Cell; ly++)
             for (int lx = 0; lx < Cell; lx++)
@@ -245,26 +231,26 @@ public static class PbrMaps
                 double seam = 1.0 - Smooth(0.8, 2.3, d);
                 if (ex < 1) seam = 1.0;
 
-                // Bevel zone right inside the seam: slopes down toward tile edge
-                double bevelBand = Smooth(0.5, 2.0, d) * (1.0 - Smooth(2.0, 5.2, d));
-                double bevelSlope = steel ? 0.42 : 0.34;
+                // Subtle beveled tile seam around each tile edge (completely flat tile face, zero random tilt)
+                double bevelBand = Smooth(0.5, 1.8, d) * (1.0 - Smooth(1.8, 4.4, d));
+                double bevelSlope = steel ? 0.26 : 0.28;
 
                 double micro = Noise(lx / 18.0, ly / 18.0, cs + 1) * 0.55 + Noise(lx / 6.0, ly / 6.0, cs + 2) * 0.45;
-                double brush = steel ? (Noise(lx / 42.0, ly / 1.1, cs + 3) * 0.65 + Noise(lx / 14.0, ly / 0.6, cs + 4) * 0.35) : micro;
+                double brush = steel ? (Noise(lx / 42.0, ly / 1.2, cs + 3) * 0.65 + Noise(lx / 14.0, ly / 0.7, cs + 4) * 0.35) : micro;
 
-                // Metallic & Smoothness
-                double m = Lerp(mt0, steel ? 0.22 : 0.02, seam);
-                double s = sm0 + (brush - 0.5) * (steel ? 0.12 : 0.10) + (micro - 0.5) * 0.05;
+                double m = Lerp(mt0, steel ? 0.20 : 0.02, seam);
+                double s = steel
+                    ? sm0 + (brush - 0.5) * 0.06
+                    : sm0 + (micro - 0.5) * 0.08;
                 s = Lerp(Clamp01(s), steel ? 0.18 : 0.10, seam);
 
-                // Tangent-space normal (Unity UV has v=0 at bottom, PNG row 0 is top -> flip Y gradient!)
-                double nx = tx - gx * bevelSlope * bevelBand;
-                double ny = ty + gy * bevelSlope * bevelBand; // +gy because PNG +y is down, UV +v is up
+                double nx = -gx * bevelSlope * bevelBand;
+                double ny = gy * bevelSlope * bevelBand;
                 if (steel)
                 {
-                    double bUp = Noise(lx / 42.0, (ly - 0.5) / 1.1, cs + 3);
-                    double bDn = Noise(lx / 42.0, (ly + 0.5) / 1.1, cs + 3);
-                    ny += (bDn - bUp) * 0.035 * (1.0 - seam);
+                    double bUp = Noise(lx / 42.0, (ly - 0.5) / 1.2, cs + 3);
+                    double bDn = Noise(lx / 42.0, (ly + 0.5) / 1.2, cs + 3);
+                    ny += (bDn - bUp) * 0.022 * (1.0 - seam);
                 }
                 else
                 {
@@ -272,7 +258,7 @@ public static class PbrMaps
                     double mR = Noise((lx + 0.5) / 7.0, ly / 7.0, cs + 5);
                     double mU = Noise(lx / 7.0, (ly - 0.5) / 7.0, cs + 5);
                     double mD = Noise(lx / 7.0, (ly + 0.5) / 7.0, cs + 5);
-                    double amp = squareBlack ? 0.045 : 0.065;
+                    double amp = squareBlack ? 0.035 : 0.050;
                     nx += (mL - mR) * amp * (1.0 - seam);
                     ny += (mD - mU) * amp * (1.0 - seam);
                 }
@@ -284,9 +270,9 @@ public static class PbrMaps
                 byte mb = ToByte(m), sb = ToByte(s);
                 metPx[i0] = mb; metPx[i0 + 1] = mb; metPx[i0 + 2] = mb; metPx[i0 + 3] = sb;
 
-                nrmPx[i0] = ToByte(nz * 0.5 + 0.5);     // B = Z
-                nrmPx[i0 + 1] = ToByte(ny * 0.5 + 0.5); // G = Y
-                nrmPx[i0 + 2] = ToByte(nx * 0.5 + 0.5); // R = X
+                nrmPx[i0] = ToByte(nz * 0.5 + 0.5);
+                nrmPx[i0 + 1] = ToByte(ny * 0.5 + 0.5);
+                nrmPx[i0 + 2] = ToByte(nx * 0.5 + 0.5);
                 nrmPx[i0 + 3] = 255;
             }
         }
@@ -306,15 +292,15 @@ public static class PbrMaps
         {
             double u = (double)x / Size, v = (double)y / Size;
             double blotch = TileNoise(u, v, 8, 11) * 0.6 + TileNoise(u, v, 24, 12) * 0.4;
-            double m = 0.02;
-            double s = Clamp01(0.24 + (blotch - 0.5) * 0.14);
+            double m = 0.04;
+            double s = Clamp01(0.30 + (blotch - 0.5) * 0.12);
 
             double hL = TileNoise(u - eps, v, 32, 13) * 0.6 + TileNoise(u - eps, v, 64, 14) * 0.4;
             double hR = TileNoise(u + eps, v, 32, 13) * 0.6 + TileNoise(u + eps, v, 64, 14) * 0.4;
             double hU = TileNoise(u, v - eps, 32, 13) * 0.6 + TileNoise(u, v - eps, 64, 14) * 0.4;
             double hD = TileNoise(u, v + eps, 32, 13) * 0.6 + TileNoise(u, v + eps, 64, 14) * 0.4;
-            double nx = (hL - hR) * 0.22;
-            double ny = (hD - hU) * 0.22;
+            double nx = (hL - hR) * 0.16;
+            double ny = (hD - hU) * 0.16;
             double nz = Math.Sqrt(Math.Max(0.1, 1.0 - nx * nx - ny * ny));
 
             int i0 = (y * Size + x) * 4;
@@ -343,4 +329,4 @@ public static class PbrMaps
 [PbrMaps]::MakeAtlasPbr((Join-Path $OutDir 'SquareSteel_MET.png'), (Join-Path $OutDir 'SquareSteel_NRM.png'), $false, 2, 188)
 [PbrMaps]::MakeCeramicPbr((Join-Path $OutDir 'Ceramic_MET.png'),   (Join-Path $OutDir 'Ceramic_NRM.png'))
 
-"Generated Steel albedos + 14 PBR maps (_MET / _NRM) in $OutDir"
+"Generated brushed Steel albedos + 14 PBR maps (_MET / _NRM) in $OutDir"
