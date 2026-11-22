@@ -260,7 +260,7 @@ namespace AblatorDecals
         private Vector3[] streakRootPos = new Vector3[0], streakRootN = new Vector3[0]; // per streak vertex, vessel root space
         private Vector3 streakFlow;
         private Texture streakTex;
-        private const float StreakLift = 0.0012f, StreakU = 1.8f, StreakV = 3.2f;
+        private const float StreakLift = 0.0018f, StreakU = 1.8f, StreakV = 3.2f;
 
         public void SetStreakAlpha(int bin, float a)
         {
@@ -354,7 +354,12 @@ namespace AblatorDecals
             {
                 foreach (Material m in streakMats) if (m != null) Object.Destroy(m);
                 streakMats = new Material[BinCount];
-                for (int b = 0; b < BinCount; b++) streakMats[b] = new Material(shader) { name = "AblativeDecalStreaks" + b, renderQueue = 3001, color = new Color(1, 1, 1, 0) };
+                for (int b = 0; b < BinCount; b++)
+                {
+                    var m = new Material(shader) { name = "AblativeDecalStreaks" + b, renderQueue = 3001, color = new Color(1, 1, 1, 0) };
+                    if (m.HasProperty("_Opacity")) m.SetFloat("_Opacity", 1f);
+                    streakMats[b] = m;
+                }
             }
             foreach (Material m in streakMats) m.mainTexture = tex;
             streakRenderer.sharedMaterials = streakMats;

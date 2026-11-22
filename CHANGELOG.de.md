@@ -2,6 +2,12 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.10.1 (2026-11-22)
+
+- **Fix: Verkohlung (Charring) & Windstreifen nach Wiedereintritt sichtbar (`ModuleAblativeDecal.cs`, `TileHost.cs`):**
+  - Behebt eine `LoadRawTextureData: not enough data provided`-Exception in Unity 2019.4 innerhalb von `StreakTexture()` (Mipmap-Textur bekam nur Mip-0-Bytes), die `ApplyChar()` bei jedem Aufruf vor dem Färben der Kacheln und dem Erzeugen des Streifen-Overlays abbrach. Lädt die Streifentextur nun sauber über `SetPixels32()` + `Apply(true, true)` inkl. automatischer Mipmap-Erzeugung und kapselt den Streifen-Aufbau ab, sodass Basis-Verkohlung nie blockiert werden kann.
+  - Doppelte Alpha-Abschwächung der Windstreifen beseitigt (`strength` `0,85` / `0,95` statt `0,48` / `0,55`, da `CharStreaks` die maximale Deckkraft bereits auf `0,40–0,47` begrenzt), Ablator-Kurve für reale `5–15 %`-Kerbin-Wiedereintritte geschärft (`Pow(uni * grad * 4,5 * dirFactor, 0,55)`) und `StreakLift` auf `1,8 mm` erhöht für saubere Darstellung auch bei weitem Zoom.
+
 ## 1.10.0 (2026-11-22)
 
 - **Einseitige Kapsel-Cover (`CockpitCover.cfg`):** Alle konischen, runden und Cupola-Kapsel-Cover bedecken jetzt nur noch eine Seite (die Unter-/Hitzeschildseite, kein 360°-Umlauf mehr unten), inkl. abgestufter Kontur beim `mk1-3pod`, die exakt hinter dem Seitenfenster gerade bis zum unteren Rand läuft und die gegenüberliegende Hälfte komplett weiß lässt.

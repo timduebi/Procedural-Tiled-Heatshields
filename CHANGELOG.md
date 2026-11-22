@@ -2,6 +2,12 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.10.1 (2026-11-22)
+
+- **Fixed Reentry Charring & Streak Overlay Not Appearing in Flight (`ModuleAblativeDecal.cs`, `TileHost.cs`):**
+  - Fixed a Unity 2019.4 `LoadRawTextureData: not enough data provided` exception in `StreakTexture()` caused by uploading mip-0 bytes into a mip-mapped `Texture2D`, which aborted `ApplyChar()` before either base tile charring or the streak overlay could run. Now uploads via `SetPixels32()` + `Apply(true, true)` so Unity generates all mip levels cleanly, and isolates streak initialization so base charring can never be blocked.
+  - Removed double alpha attenuation on streaks (`strength` `0.85` / `0.95` instead of `0.48` / `0.55`, since `CharStreaks` already caps peak pixel alpha at `0.40–0.47`), tuned the ablator response curve (`Pow(uni * grad * 4.5 * dirFactor, 0.55)`) so typical `5–15 %` Kerbin reentries show clear, tasteful Starship/Shuttle wind streaks and matte ash patina, and bumped `StreakLift` to `1.8 mm` for extra depth-buffer margin at long zoom.
+
 ## 1.10.0 (2026-11-22)
 
 - **One-Sided Capsule Covers (`CockpitCover.cfg`):** All conical, spherical, and cupola capsule covers now shield ONLY one side (the windward belly half, no 360° bottom wrap), including a stepped side-window contour on `mk1-3pod` that runs cleanly behind the side windows straight down to the bottom rim while keeping the entire opposite half bare and white.

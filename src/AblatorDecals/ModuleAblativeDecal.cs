@@ -769,11 +769,22 @@ namespace AblatorDecals
             Vector3 flow = vc != null ? vc.Flow : DefaultFlow;
             appliedFlow = flow;
             bool black = string.Equals(Finish, "Black", StringComparison.OrdinalIgnoreCase);
-            Color charCol = black ? new Color(1.45f, 1.38f, 1.32f) : new Color(0.32f, 0.29f, 0.26f);
-            float colScale = black ? 0.65f : 1f;
+            Color charCol = black ? new Color(1.65f, 1.54f, 1.44f) : new Color(0.32f, 0.29f, 0.26f);
+            float colScale = black ? 0.70f : 1f;
             StreakStyle style = !black ? StreakStyle.Soot : Shape == TileShape.Square ? StreakStyle.SquareBlack : StreakStyle.HexBlack;
-            float strength = style == StreakStyle.SquareBlack ? 0.48f : 0.55f;
-            Texture2D streakTex = StreakTexture(style);
+            // CharStreaks already caps peak texture alpha at ~0.40-0.47, so strength only trims it gently rather than halving twice
+            float strength = style == StreakStyle.SquareBlack ? 0.85f : 0.95f;
+            Texture2D streakTex = null;
+            Shader streakSh = null;
+            try
+            {
+                streakTex = StreakTexture(style);
+                streakSh = StreakShader();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[AblatorDecals] streak setup failed: {e}");
+            }
             float baseWeath = Mathf.Clamp01(weathering / 100f);
             foreach (TileHost h in hosts)
             {
@@ -789,11 +800,11 @@ namespace AblatorDecals
                 for (int b = 0; b < h.BinCount; b++)
                 {
                     float dirFactor = directional && b < exp.Length ? 0.35f + 1.15f * exp[b] / maxExposure : 1f;
-                    float amt = Mathf.Clamp01(baseWeath + Mathf.Pow(Mathf.Clamp01(uni * grad * 2.8f * dirFactor), 0.65f));
+                    float amt = Mathf.Clamp01(baseWeath + Mathf.Pow(Mathf.Clamp01(uni * grad * 4.5f * dirFactor), 0.55f));
                     h.SetBinChar(b, Color.Lerp(Color.white, charCol, amt * colScale), amt);
                     h.SetStreakAlpha(b, Mathf.Clamp01(amt * strength));
                 }
-                h.EnsureStreaks(streakTex, StreakShader(), root, flow);
+                if (streakTex != null && streakSh != null) h.EnsureStreaks(streakTex, streakSh, root, flow);
             }
         }
 
@@ -862,15 +873,26 @@ namespace AblatorDecals
         private static readonly Texture2D[] StreakTextures = new Texture2D[3];
         private static Shader streakShader;
 
-        // generated once per style (CharStreaks), 512 px, mip-mapped, repeating; then no longer readable (GPU copy only)
+        // generated once per style (CharStreaks), 512 px, mip-mapped, repeating; then no longer readable (GPU copy only).
+        // 1.10.1: upload via SetPixels32 (mip 0) so Apply(true, true) generates the mip chain; LoadRawTextureData on a mip-mapped
+        // Texture2D in Unity 2019.4 requires all mip levels in the byte buffer and threw an overread exception.
         private static Texture2D StreakTexture(StreakStyle style)
         {
             int i = (int)style;
             if (StreakTextures[i] != null) return StreakTextures[i];
             const int n = 512;
+            byte[] raw = CharStreaks.Generate(style, n, 1);
+            var px = new Color32[n * n];
+            for (int k = 0; k < px.Length; k++)
+            {
+                int o = k * 4;
+                px[k] = new Color32(raw[o], raw[o + 1], raw[o + 2], raw[o + 3]);
+            }
             var t = new Texture2D(n, n, TextureFormat.RGBA32, true) { name = "AblativeDecalStreaks" + style, wrapMode = TextureWrapMode.Repeat, anisoLevel = 4 };
-            t.LoadRawTextureData(CharStreaks.Generate(style, n, 1));
+            t.SetPixels32(px);
             t.Apply(true, true);
+            Shader sh = StreakShader();
+            Debug.Log($"[AblatorDecals] streak texture {style} ready ({n}x{n}, shader={(sh != null ? sh.name : "NONE")})");
             return StreakTextures[i] = t;
         }
 
