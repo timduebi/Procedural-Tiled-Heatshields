@@ -42,6 +42,8 @@ public class MuModel
 {
     public List<MuMesh> Meshes = new List<MuMesh>();
     public List<string> Shaders = new List<string>(); // by material id
+    public List<int> EmissiveTex = new List<int>();    // by material id: index into Textures of its _Emissive map, -1 none
+    public List<string> Textures = new List<string>(); // texture table (file names as stored)
     public List<(Xform world, Vector3 lo, Vector3 hi)> Airlocks = new List<(Xform, Vector3, Vector3)>(); // colliders tagged "Airlock", local bounds
     public HashSet<string> Animated = new HashSet<string>(); // names of transforms an animation clip moves (last path segment)
     public List<(string name, Xform world)> Transforms = new List<(string, Xform)>(); // every transform, model-root space
@@ -223,11 +225,16 @@ public class MuModel
                 }
                 case 10:                                                          // Materials
                     int count = br.ReadInt32();
-                    for (int i = 0; i < count; i++) Shaders.Add(version >= 4 ? ReadMaterial4(br) : ReadMaterial(br));
+                    for (int i = 0; i < count; i++)
+                    {
+                        int emissive = -1;
+                        Shaders.Add(version >= 4 ? ReadMaterial4(br, ref emissive) : ReadMaterial(br, ref emissive));
+                        EmissiveTex.Add(emissive);
+                    }
                     break;
                 case 12:                                                          // Textures
                     int tex = br.ReadInt32();
-                    for (int i = 0; i < tex; i++) { br.ReadString(); br.ReadInt32(); }
+                    for (int i = 0; i < tex; i++) { Textures.Add(br.ReadString()); br.ReadInt32(); }
                     break;
                 case 23: br.ReadInt32(); F(br, 2); F(br, 4); br.ReadInt32(); if (version > 1) F(br, 1); break; // Light
                 case 24: tag = br.ReadString(); br.ReadInt32(); break;            // TagAndLayer
@@ -297,27 +304,28 @@ public class MuModel
         }
     }
 
-    static void Tex(BinaryReader br) { br.ReadInt32(); F(br, 4); }
+    static int Tex(BinaryReader br) { int i = br.ReadInt32(); F(br, 4); return i; }
 
-    static string ReadMaterial4(BinaryReader br)
+    static string ReadMaterial4(BinaryReader br, ref int emissive)
     {
         br.ReadString();
         string shader = br.ReadString();
         int props = br.ReadInt32();
         for (int i = 0; i < props; i++)
         {
-            br.ReadString();
+            string prop = br.ReadString();
             switch (br.ReadInt32())
             {
                 case 0: case 1: F(br, 4); break;
                 case 2: case 3: F(br, 1); break;
-                case 4: Tex(br); break;
+                case 4: int tx = Tex(br); if (prop == "_Emissive") emissive = tx; break;
             }
         }
         return shader;
     }
 
-    static string ReadMaterial(BinaryReader br)
+    // old material types 5-7 (KSP/Emissive/*) carry the emissive map as their second/last texture
+    static string ReadMaterial(BinaryReader br, ref int emissive)
     {
         br.ReadString();
         int type = br.ReadInt32();
@@ -326,9 +334,9 @@ public class MuModel
             case 2: Tex(br); F(br, 5); break;
             case 3: Tex(br); Tex(br); break;
             case 4: Tex(br); Tex(br); F(br, 5); break;
-            case 5: Tex(br); Tex(br); F(br, 4); break;
-            case 6: Tex(br); F(br, 5); Tex(br); F(br, 4); break;
-            case 7: Tex(br); Tex(br); F(br, 5); Tex(br); F(br, 4); break;
+            case 5: Tex(br); emissive = Tex(br); F(br, 4); break;
+            case 6: Tex(br); F(br, 5); emissive = Tex(br); F(br, 4); break;
+            case 7: Tex(br); Tex(br); F(br, 5); emissive = Tex(br); F(br, 4); break;
             case 8: Tex(br); F(br, 1); break;
             case 9: Tex(br); Tex(br); F(br, 1); break;
             case 10: Tex(br); break;

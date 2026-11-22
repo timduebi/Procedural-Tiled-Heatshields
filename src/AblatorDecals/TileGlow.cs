@@ -15,23 +15,24 @@ namespace AblatorDecals
         public TileGlow(double skinTemp) { T = skinTemp; }
 
         // 1.7.1: local glow. A tile area facing the flow by f = max(0, n.v) (fMax: the most exposed area of the vessel) glows with
-        // skin + (T - skin) x LocalWeight: 0.35 on faces in the lee, 1.2 on the most exposed (nose, belly, leading edges), smoothstep
-        // in between, so the gradient has no visible steps between neighbouring glow bins.
+        // skin + (T - skin) x LocalWeight: 0.15 on faces in the lee, 1.25 on the most exposed (nose, belly, leading edges), smoothstep
+        // in between, so the gradient has no visible steps between neighbouring glow bins. 1.9: lee darker, so the nose and leading
+        // edges light up cherry red first.
         public static double LocalWeight(double f, double fMax)
         {
             double x = fMax > 1e-6 ? Math.Max(0, Math.Min(1, f / fMax)) : 1;
-            return 0.35 + 0.85 * x * x * (3 - 2 * x);
+            return 0.15 + 1.10 * x * x * (3 - 2 * x);
         }
 
         // 1.7.4: directional heating acts on windward faces (fb); convective cooling in cold air acts across the boundary layer.
         public static double EffectiveFacing(double fb, double extTemp, double tileTemp) =>
             extTemp < tileTemp ? Math.Max(fb, 0.65) : fb;
 
-        // 1.7.4: per-bin display temperature. Directional LocalWeight (0.35..1.20) smoothly activates only while external air
-        // is hot enough to heat tiles (> 550 K), so pitching up in cool air after reentry never flashes the heatshield red.
+        // 1.7.4: per-bin display temperature. Directional LocalWeight (0.15..1.25) smoothly activates only while external air
+        // is hot enough to heat tiles (1.9: > 720 K, full at 900 K), so pitching up in cool air after reentry never flashes red.
         public static double BinTemp(double skin, double shown, double extTemp, double f, double fMax)
         {
-            double u = Math.Max(0.0, Math.Min(1.0, (extTemp - 550.0) / 200.0));
+            double u = Math.Max(0.0, Math.Min(1.0, (extTemp - 720.0) / 180.0));
             double activeHeat = u * u * (3.0 - 2.0 * u);
             double w = 1.0 + (LocalWeight(f, fMax) - 1.0) * activeHeat;
             double baseT = Math.Min(skin, shown);

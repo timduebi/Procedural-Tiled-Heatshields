@@ -60,6 +60,7 @@ namespace AblatorDecals
         public bool FillHull;             // close gaps on continuous whole-part hulls and cockpit masks
         public bool Skin;                 // overlay (gear, intakes, fins, flaps, shielded port base): no tiles but one closed shell, the visible skin lifted by
                                           // the thickness, the tile pattern projected onto it (joints only in the texture; see RunSkin)
+        public bool CeramicAxis;          // 1.9 (pods): the CeramicSideDeg rule against the part axis (TankAxis) even with a PLANE/REGION mask
         public float CeramicSideDeg;      // > 0 (cockpit covers): smooth untiled black ceramic shell on the nose tip and both sides/chines (|dot(n, decalN)| <= sin(deg))
     }
 
@@ -271,6 +272,25 @@ namespace AblatorDecals
             for (int k = 0; k < wrapIn.Length; k++)
                 if (surface.Triangle(k, out _, out _, out _, out _, out int o))
                     wrapIn[k] = S.Overlay ? !Obstacle(o) && (ownerWrap == null || o >= S.WrapOwner.Length || !S.WrapOwner[o] || ownerWrap[k]) : wrapIn[k] && !Obstacle(o);
+            // 1.9 whole part: pockets in a cut-off end face (Mk2 end recesses, docking collars) are cavities, not hull: a face within
+            // 35 cm inside a stack cut that faces out along it (recessed end floor), or within 15 cm that faces out half way
+            // (chamfered pocket walls) or whose normal runs into the part's own hull within 1 m (pocket walls), stays bare
+            if (!S.Overlay && !HasClip && S.CeramicSideDeg <= 0 && S.CutPlanes != null && S.CutPlanes.Length > 0)
+                for (int k = 0; k < wrapIn.Length; k++)
+                {
+                    if (!wrapIn[k] || !surface.Triangle(k, out Vector3 ta, out Vector3 tb, out Vector3 tc, out Vector3 tn, out _)) continue;
+                    Vector3 tm = (ta + tb + tc) / 3;
+                    bool nearCut = false, endFace = false;
+                    foreach (Vector4 cp in S.CutPlanes)
+                    {
+                        float d = cp.x * tm.x + cp.y * tm.y + cp.z * tm.z + cp.w;
+                        float along = cp.x * tn.x + cp.y * tn.y + cp.z * tn.z;
+                        if (d > -0.35f && along > 0.85f || d > -0.15f && along > 0.5f) endFace = true; // recessed floor, chamfered pocket walls
+                        if (d > -0.15f) nearCut = true;
+                    }
+                    if (endFace) { wrapIn[k] = false; continue; }
+                    if (nearCut && surface.Raycast(tm + tn * 0.01f, tn, 1.0f, -1.01f, out SurfaceHit cav, false) && !Obstacle(cav.Owner)) wrapIn[k] = false;
+                }
             cosCorner = Mathf.Cos(S.CornerBendDeg * Mathf.Deg2Rad);
             cosFace = Mathf.Cos(S.FaceBendDeg * Mathf.Deg2Rad);
             cosCrease = Mathf.Cos(CreaseDeg * Mathf.Deg2Rad);
@@ -770,6 +790,40 @@ namespace AblatorDecals
             return n.StartsWith("mk2") && !n.Contains("cockpit") && !n.Contains("cargobay") && !n.Contains("lander");
         }
 
+        // 1.9: half size of a window keep-out box (WindowKeepOuts.cfg: centre, half size, part space). The thinnest axis is the
+        // pane's normal: at least 14 cm half depth there, so glass recessed 5-10 cm inside a cylinder cabin's hull still cuts
+        // through the smooth hull and the tiles; the two in-plane axes get a 5 mm frame. Module and preview share this rule.
+        // 1.9: half size of a hatch keep-out box (collider tagged "Airlock"): grown 5 cm, and >= 14 cm deep along its thinnest
+        // axis so a hatch door recessed into the hull is cut free too, not only its frame. Module and preview share this rule.
+        public static Vector3 HatchKeepHalf(Vector3 half)
+        {
+            const float grow = 0.05f, depth = 0.14f;
+            int thin = half.x <= half.y && half.x <= half.z ? 0 : half.y <= half.z ? 1 : 2;
+            var r = new Vector3(half.x + grow, half.y + grow, half.z + grow);
+            r[thin] = Mathf.Max(r[thin], depth);
+            return r;
+        }
+
+        public static Vector3 WindowKeepHalf(Vector3 half)
+        {
+            const float frame = 0.005f, depth = 0.14f;
+            int thin = half.x <= half.y && half.x <= half.z ? 0 : half.y <= half.z ? 1 : 2;
+            var r = new Vector3(half.x + frame, half.y + frame, half.z + frame);
+            r[thin] = Mathf.Max(half[thin], depth);
+            return r;
+        }
+
+        // 1.9: radial service bay door face kept as outer skin (bay part space, axis = y): centroid at >= 85 % of the doors' largest
+        // radius and facing outward (dot(n, radial) >= 0.35); hinge cylinders, ribs and inner thickness faces drop out. Module and
+        // preview share this rule.
+        public static bool DoorOuterFace(Vector3 a, Vector3 b, Vector3 c, float maxDoorR)
+        {
+            Vector3 m = (a + b + c) / 3, n = Vector3.Cross(b - a, c - a);
+            float r = Mathf.Sqrt(m.x * m.x + m.z * m.z);
+            if (r < maxDoorR * 0.85f || r < 1e-6f || n.sqrMagnitude < 1e-16f) return false;
+            return Vector3.Dot(n.normalized, new Vector3(m.x / r, 0, m.z / r)) >= 0.35f;
+        }
+
         // Intake mouth or duct (any space): walls facing in towards the intake axis (the line through the intake transform along its
         // forward, the direction of travel) and faces turned towards the oncoming air that lie recessed behind the intake's front
         // (front = largest dot(p - axisPos, fwd) over the intake, the lip): the hole and the duct are free, the lip is tiled
@@ -1000,7 +1054,8 @@ namespace AblatorDecals
                     var key = p < q ? (p, q) : (q, p);
                     edgeUse[key] = (edgeUse.TryGetValue(key, out int u0) ? u0 : 0) + 1;
                 }
-            float lift = S.SurfaceOffset + S.Thickness;
+            // 1.9 ceramicAll: a thin conformal coat (no tiles to match), so handrails and trims do not balloon
+            float lift = S.SurfaceOffset + (S.CeramicSideDeg >= 89.5f ? Math.Min(S.Thickness, 0.005f) : S.Thickness);
             var top = new Vector3[vp.Count];
             for (int i = 0; i < vp.Count; i++)
             {
@@ -1241,8 +1296,9 @@ namespace AblatorDecals
                     outward.Normalize();
                     int w0 = Add(acc, top[p], outward, plain);
                     Add(acc, top[q], outward, plain);
-                    Add(acc, vp[p], outward, plain);
-                    Add(acc, vp[q], outward, plain);
+                    // 1.9: the foot splays out by half the lift, closing hairline seams to the neighbour skin (bay door / frame)
+                    Add(acc, vp[p] + outward * (0.5f * lift), outward, plain);
+                    Add(acc, vp[q] + outward * (0.5f * lift), outward, plain);
                     Tri(acc, tris, w0, w0 + 1, w0 + 3, outward);
                     Tri(acc, tris, w0, w0 + 3, w0 + 2, outward);
                 }
@@ -2219,8 +2275,11 @@ namespace AblatorDecals
         {
             // Only true doubly-curved sharp nose tips (Gaussian curvature, plus local normal-turn extension right at the tip),
             // never long 1D creases/chines or large flat belly faces.
-            if (!HasClip || S.Regions != null && Array.Exists(S.Regions, r => r.Domain != null && r.Domain.Length > 0)) return null;
-            List<SurfaceIndex.ShellTri> shell = surface.CurvedShell(2 * s, Mathf.PI / 2.25f, s, Mathf.Cos(45 * Mathf.Deg2Rad), (a, b, c) =>
+            // 1.9 ceramicAll (CeramicSideDeg >= 89.5): the whole mask is one smooth ceramic shell, no tiles, regions with domains too
+            // 1.9: a cover with only stack cuts (pods, landers) gets its ceramic too; without ceramic it stays the whole-part tank path
+            bool ceramicAll = S.CeramicSideDeg >= 89.5f;
+            if (!HasClip && S.CeramicSideDeg <= 0 || !ceramicAll && S.Regions != null && Array.Exists(S.Regions, r => r.Domain != null && r.Domain.Length > 0)) return null;
+            List<SurfaceIndex.ShellTri> shell = ceramicAll ? new List<SurfaceIndex.ShellTri>() : surface.CurvedShell(2 * s, Mathf.PI / 2.25f, s, Mathf.Cos(45 * Mathf.Deg2Rad), (a, b, c) =>
                 ClipDist(a) <= 0 && ClipDist(b) <= 0 && ClipDist(c) <= 0 && Vector3.Dot(Vector3.Cross(b - a, c - a).normalized, decalN) >= cosWrap &&
                 Vector3.Cross(b - a, c - a).magnitude <= 4 * s * s);
             if (S.CeramicSideDeg > 0)
@@ -2234,8 +2293,10 @@ namespace AblatorDecals
                 for (int k = 0; k < surface.TriangleSlots; k++)
                 {
                     if (!wrapIn[k] || !surface.Triangle(k, out Vector3 a, out Vector3 b, out Vector3 c, out Vector3 fn, out int o) || Obstacle(o)) continue;
-                    if (axis.sqrMagnitude > 0.5f && Vector3.Dot(fn, axis) < -0.999f) continue;
-                    if (Math.Abs(Vector3.Dot(fn, decalN)) > sideSin) continue;
+                    if (axis.sqrMagnitude > 0.5f && Vector3.Dot(fn, axis) < (ceramicAll ? -0.95f : -0.999f)) continue; // 1.9: flat bottoms stay bare
+                    // cockpit masks: sides/chines seen from the decal; 1.9 cut-only covers (pods): steep against the part axis, i.e.
+                    // the cone wall (within 90 - deg of the axis' normal plane) is tiled, shoulders and rims are ceramic
+                    if (!ceramicAll && ((HasClip && !S.CeramicAxis) || axis.sqrMagnitude < 0.5f ? Math.Abs(Vector3.Dot(fn, decalN)) > sideSin : Math.Abs(Vector3.Dot(fn, axis)) < Mathf.Cos(S.CeramicSideDeg * Mathf.Deg2Rad))) continue;
                     if (surface.Raycast((a + b + c) / 3 + fn * 0.01f, fn, 0.5f, -1.01f, out SurfaceHit inner, false) && !Obstacle(inner.Owner)) continue;
                     shellTris.Add(k);
                 }
@@ -2247,7 +2308,8 @@ namespace AblatorDecals
             return shell;
         }
 
-        private bool OnCap(SurfaceHit h) => shellTris != null && shellTris.Contains(h.Triangle);
+        // 1.9 ceramicAll: no tile anywhere (recess walls and flat bottoms outside the shell stay bare, not tiled)
+        private bool OnCap(SurfaceHit h) => S.CeramicSideDeg >= 89.5f || shellTris != null && shellTris.Contains(h.Triangle);
 
         // The cap as one pseudo tile per owner (bins, areas and thermal like a tile; no collider).
         private void AddCap(List<SurfaceIndex.ShellTri> shell)
@@ -3682,6 +3744,7 @@ namespace AblatorDecals
                 if (cuts != null)
                     foreach (Vector4 c in cuts)
                         if (c.x * p.x + c.y * p.y + c.z * p.z + c.w > 1e-4f) return false;
+                if (!HasClip) return true; // 1.9: cut-only cover: everything between the stack cuts
                 if (S.ClipPlanes != null)
                     foreach (Vector4 c in S.ClipPlanes)
                         if (c.x * p.x + c.y * p.y + c.z * p.z + c.w <= 1e-4f) return true;
@@ -3711,7 +3774,7 @@ namespace AblatorDecals
             foreach (int k in shellTris)
             {
                 if (!surface.Triangle(k, out Vector3 a, out Vector3 b, out Vector3 c, out Vector3 n, out int owner) || Obstacle(owner)) continue;
-                if (axis.sqrMagnitude > 0.5f && Vector3.Dot(n, axis) < -0.999f) continue;
+                if (axis.sqrMagnitude > 0.5f && Vector3.Dot(n, axis) < (S.CeramicSideDeg >= 89.5f ? -0.95f : -0.999f)) continue;
                 foreach (var piece in SkinPolygons(a, b, c))
                 {
                     Vector3 mid = Vector3.zero;
@@ -3736,7 +3799,8 @@ namespace AblatorDecals
                     var key = p < q ? (p, q) : (q, p);
                     edgeUse[key] = (edgeUse.TryGetValue(key, out int u0) ? u0 : 0) + 1;
                 }
-            float lift = S.SurfaceOffset + S.Thickness;
+            // 1.9 ceramicAll: a thin conformal coat (no tiles to match), so handrails and trims do not balloon
+            float lift = S.SurfaceOffset + (S.CeramicSideDeg >= 89.5f ? Math.Min(S.Thickness, 0.005f) : S.Thickness);
             var top = new Vector3[vp.Count];
             for (int i = 0; i < vp.Count; i++)
             {
@@ -3851,9 +3915,9 @@ namespace AblatorDecals
 
             if (S.CeramicSideDeg > 0 && shellTris != null && shellTris.Count > 0)
                 EmitCeramicShell(accs, order, result, outlines);
-            if (S.FillHull && !HasClip && !S.Overlay && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0))
+            if (S.FillHull && !HasClip && !S.Overlay && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0) && S.CeramicSideDeg < 89.5f)
                 AddTankJointBed(accs);
-            else if (S.FillHull && HasClip && !S.Overlay && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0))
+            else if (S.FillHull && HasClip && !S.Overlay && S.TileLoss == 0 && (S.Occupied == null || S.Occupied.Length == 0) && S.CeramicSideDeg < 89.5f)
                 AddMaskJointBed(accs);
             result.Parts = new PartTiles[order.Count];
             for (int i = 0; i < order.Count; i++)

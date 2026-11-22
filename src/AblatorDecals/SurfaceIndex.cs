@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -310,7 +310,7 @@ namespace AblatorDecals
         // 1.8: axisymmetric envelope of targetOwner's side faces (tanks, station modules): per 8 cm slice the median radius over 36
         // sectors, grooves closed, ridges (stiffening rings) ramped at <= 19 deg, revolved with 64 segments. Null when the part is
         // not round (Mk2/Mk3, boxes, wings, hubs) unless force, or too small. Other owners are copied verbatim; flat target faces
-        // at the ends (stack caps, dome tops) too.
+        // (stack caps, docking faces) are dropped.
         public static SmoothHullResult BuildSmoothHull(Vector3[] pos, int[] tri, int[] owner, int targetOwner, Vector3 axis, Vector3 center, bool force = false)
         {
             if (pos == null || tri == null || axis.sqrMagnitude < 1e-8f) return null;
@@ -335,9 +335,9 @@ namespace AblatorDecals
                 yMin = Math.Min(yMin, Math.Min(Y(a), Math.Min(Y(b), Y(c))));
                 yMax = Math.Max(yMax, Math.Max(Y(a), Math.Max(Y(b), Y(c))));
             }
-            if (side.Count == 0 || yMax - yMin < 0.25f) return null;
+            if (side.Count == 0 || yMax - yMin < 0.10f) return null; // 1.9: thin rings (docking ports, decouplers, heat shield rims) too
 
-            int ny = Mathf.Clamp(Mathf.CeilToInt((yMax - yMin) / 0.08f) + 1, 8, 160);
+            int ny = Mathf.Clamp(Mathf.CeilToInt((yMax - yMin) / 0.08f) + 1, 4, 160);
             const int sectors = 36;
             float s0 = yMin + 0.002f, s1 = yMax - 0.002f, ds = (s1 - s0) / (ny - 1);
             var sliceY = new float[ny];
@@ -381,7 +381,7 @@ namespace AblatorDecals
             // per slice: radius quantiles over the populated sectors (>= 24 of 36 for a usable slice)
             var populated = new bool[ny];
             var rawR = new float[ny];
-            int populatedSlices = 0, roundSlices = 0;
+            int populatedSlices = 0, roundSlices = 0, strictSlices = 0;
             var radii = new List<float>(sectors);
             for (int i = 0; i < ny; i++)
             {
@@ -396,11 +396,16 @@ namespace AblatorDecals
                 rawR[i] = r50;
                 // r05/r10 reject flat-bellied hulls (e.g. Mk3: flat bottom sits ~13% inside the top radius), while
                 // external pipes/ladders only push high quantiles outward and leave low quantiles at the cylinder radius.
-                if (r50 >= 0.20f && r05 >= r50 * 0.955f && r10 >= r50 * 0.965f &&
-                    (r75 - r25) / r50 <= 0.045f && (r80 - r20) / r50 <= 0.065f) roundSlices++;
+                bool strict = r50 >= 0.15f && r05 >= r50 * 0.955f && r10 >= r50 * 0.965f &&
+                              (r75 - r25) / r50 <= 0.045f && (r80 - r20) / r50 <= 0.065f;
+                // 1.9: recessed windows / raised frames (station labs) only move a few sectors; the middle half stays round
+                bool loose = r50 >= 0.15f && r25 >= r50 * 0.955f && (r75 - r25) / r50 <= 0.045f;
+                if (strict) strictSlices++;
+                if (strict || loose) roundSlices++;
             }
             if (populatedSlices < 0.70f * ny) return null;
-            if (!force && roundSlices < 0.70f * populatedSlices) return null;
+            // Mk3-like flat bellies run the whole length; a round part has some strictly round slices (ends, rings)
+            if (!force && (roundSlices < 0.70f * populatedSlices || strictSlices < Math.Max(1, 0.15f * populatedSlices))) return null;
             // gaps: linear between populated neighbours, the nearest one at the ends
             for (int i = 0; i < ny; i++)
             {
@@ -493,6 +498,10 @@ namespace AblatorDecals
                     continue;
                 }
                 Vector3 m = (a + b + c) / 3;
+                Vector3 fa = Vector3.Cross(b - a, c - a);
+                float ym = Y(m);
+                // 1.9: axial faces at the ends (stack caps, docking faces, end flanges) get neither hull nor protrusion skin
+                if (fa.sqrMagnitude > 1e-24f && Math.Abs(Vector3.Dot(fa.normalized, axis)) > 0.85f && (ym < yMin + 0.02f || ym > yMax - 0.02f)) continue;
                 float ex = Math.Max(R(a) - Env(Y(a)), Math.Max(R(b) - Env(Y(b)), R(c) - Env(Y(c))));
                 if (ex > 0.015f && R(m) - Env(Y(m)) > 0.008f)
                 {
@@ -501,14 +510,7 @@ namespace AblatorDecals
                     protTri.Add(p0); protTri.Add(p0 + 1); protTri.Add(p0 + 2);
                     continue;
                 }
-                // flat faces at the ends stay (stack caps, dome tops); flanks of rings in between are inside the envelope
-                Vector3 fn = Vector3.Cross(b - a, c - a);
-                float ym = Y(m);
-                if (fn.sqrMagnitude > 1e-24f && Math.Abs(Vector3.Dot(fn.normalized, axis)) > 0.92f && (ym < yMin + 0.01f || ym > yMax - 0.01f))
-                {
-                    outTri.Add(baseIndex + ia); outTri.Add(baseIndex + ib); outTri.Add(baseIndex + ic);
-                    outOwner.Add(targetOwner);
-                }
+                // 1.9: flat stack caps and ring flanks are never tiled: only the revolved wall (domes are part of it)
             }
             return new SmoothHullResult
             {

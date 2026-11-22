@@ -1765,6 +1765,20 @@ static class Program
         }
         Check(res.ProtrusionTri.Length >= 3 * 12 && onPipes, $"smooth hull: pipes extracted as protrusions ({res.ProtrusionTri.Length / 3} tris)");
 
+        // 1.9: thin ring (docking port / decoupler, 0.15 m tall) still gets the smooth hull
+        Mesh ring = Lathe(new[] { (0f, 0.625f), (0.15f, 0.625f) }, 48);
+        Check(SurfaceIndex.BuildSmoothHull(ring.V, ring.T, null, 0, Vector3.up, Vector3.zero, false) != null, "smooth hull: thin 0.15 m ring detected as round");
+
+        // 1.9: radial service bay doors keep only their outer shell (outer face at r 1.25 kept; hinge face at r 0.9 and inward face dropped)
+        Check(TileBuilder.DoorOuterFace(new Vector3(1.25f, 0, -0.1f), new Vector3(1.25f, 0.2f, 0), new Vector3(1.25f, 0, 0.1f), 1.25f), "door skin: outer door face kept");
+        Check(!TileBuilder.DoorOuterFace(new Vector3(0.9f, 0, -0.1f), new Vector3(0.9f, 0.2f, 0), new Vector3(0.9f, 0, 0.1f), 1.25f), "door skin: hinge cylinder face dropped");
+        Check(!TileBuilder.DoorOuterFace(new Vector3(1.25f, 0, 0.1f), new Vector3(1.25f, 0.2f, 0), new Vector3(1.25f, 0, -0.1f), 1.25f), "door skin: inward-facing face dropped");
+
+        // 1.9: window keep-out: thinnest axis (pane normal) >= 14 cm half depth, in-plane axes + 5 mm frame
+        Vector3 wk = TileBuilder.WindowKeepHalf(new Vector3(0.081f, 0.2f, 0.25f));
+        Check(Mathf.Abs(wk.x - 0.14f) < 1e-5f && Mathf.Abs(wk.y - 0.205f) < 1e-5f && Mathf.Abs(wk.z - 0.255f) < 1e-5f, $"window keep-out: recessed pane padded along its normal ({wk.x:F3}, {wk.y:F3}, {wk.z:F3})");
+        Check(Mathf.Abs(TileBuilder.WindowKeepHalf(new Vector3(0.3f, 0.2f, 0.25f)).y - 0.2f) < 1e-5f, "window keep-out: thick pane depth kept as is");
+
         // not round: Mk2-like oval, Mk3-like flat-bellied hull, and a square prism
         Mesh oval = Prism(a => new Vector2(1.5f * Mathf.Cos(a), 0.8f * Mathf.Sin(a)), 64);
         Check(SurfaceIndex.BuildSmoothHull(oval.V, oval.T, null, 0, Vector3.up, Vector3.zero, false) == null, "smooth hull: oval (Mk2-like) rejected");
@@ -1773,6 +1787,34 @@ static class Program
         Mesh square = Prism(a => new Vector2(Mathf.Cos(a), Mathf.Sin(a)) / Mathf.Max(Mathf.Abs(Mathf.Cos(a)), Mathf.Abs(Mathf.Sin(a))), 64);
         Check(SurfaceIndex.BuildSmoothHull(square.V, square.T, null, 0, Vector3.up, Vector3.zero, false) == null, "smooth hull: square prism rejected");
         Check(SurfaceIndex.BuildSmoothHull(square.V, square.T, null, 0, Vector3.up, Vector3.zero, true) != null, "smooth hull: forced fit on the square prism");
+
+        // 1.9: station lab (recessed windows in 4 of 36 sectors along the middle, round ends) still detected as round
+        Func<Mesh, float, float, Mesh> spanY = (m, lo, hi) => new Mesh { V = m.V.Select(q => new Vector3(q.x, lo + (q.y + 2) / 4 * (hi - lo), q.z)).ToArray(), T = m.T };
+        Mesh round = Prism(a => new Vector2(1.25f * Mathf.Cos(a), 1.25f * Mathf.Sin(a)), 72);
+        Mesh recessed = Prism(a => { float r = Mathf.Abs(Mathf.DeltaAngle(a * Mathf.Rad2Deg, 0)) < 20 || Mathf.Abs(Mathf.DeltaAngle(a * Mathf.Rad2Deg, 180)) < 20 ? 1.09f : 1.25f; return new Vector2(r * Mathf.Cos(a), r * Mathf.Sin(a)); }, 72);
+        Mesh lab = Merge(Merge(spanY(round, -2, -1.2f), spanY(recessed, -1.2f, 1.2f)), spanY(round, 1.2f, 2));
+        Check(SurfaceIndex.BuildSmoothHull(lab.V, lab.T, null, 0, Vector3.up, Vector3.zero, false) != null, "smooth hull: lab with recessed windows detected as round");
+
+        // 1.9: flat stack caps are never part of the smooth hull (no tiles on end faces)
+        var capV = new List<Vector3>(round.V);
+        var capT = new List<int>(round.T);
+        int c0 = capV.Count;
+        capV.Add(new Vector3(0, 2, 0));
+        for (int i = 0; i < 72; i++) { capV.Add(new Vector3(1.25f * Mathf.Cos(2 * Mathf.PI * i / 72), 2, 1.25f * Mathf.Sin(2 * Mathf.PI * i / 72))); }
+        for (int i = 0; i < 72; i++) { capT.Add(c0); capT.Add(c0 + 1 + (i + 1) % 72); capT.Add(c0 + 1 + i); }
+        var capped = SurfaceIndex.BuildSmoothHull(capV.ToArray(), capT.ToArray(), null, 0, Vector3.up, Vector3.zero, false);
+        bool noCap = capped != null;
+        for (int t = 0; noCap && t < capped.Tri.Length / 3; t++)
+        {
+            Vector3 fa = capped.Pos[capped.Tri[3 * t]], fb = capped.Pos[capped.Tri[3 * t + 1]], fc = capped.Pos[capped.Tri[3 * t + 2]];
+            Vector3 fn = Vector3.Cross(fb - fa, fc - fa);
+            if (fn.sqrMagnitude > 1e-12f && Mathf.Abs(Vector3.Dot(fn.normalized, Vector3.up)) > 0.85f) noCap = false;
+        }
+        Check(noCap, "smooth hull: flat stack cap dropped");
+
+        // 1.9: hatch keep-out: 5 cm all round, >= 14 cm deep along its thinnest axis (recessed hatch doors)
+        Vector3 hk = TileBuilder.HatchKeepHalf(new Vector3(0.02f, 0.3f, 0.25f));
+        Check(Mathf.Abs(hk.x - 0.14f) < 1e-5f && Mathf.Abs(hk.y - 0.35f) < 1e-5f && Mathf.Abs(hk.z - 0.30f) < 1e-5f, $"hatch keep-out: deep along the thin axis ({hk.x:F3}, {hk.y:F3}, {hk.z:F3})");
 
         // visual skin over the pipe facing the decal
         var ss = new TileSettings { TileSize = 0.1f, MaxWrapDeg = 100, TankAxis = Vector3.up, TankCenter = Vector3.zero, UvMode = UvMode.Atlas, AtlasCols = 4, AtlasRows = 4, Thickness = 0.025f };

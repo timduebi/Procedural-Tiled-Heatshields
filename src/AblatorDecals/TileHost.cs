@@ -48,6 +48,10 @@ namespace AblatorDecals
         private Matrix4x4 hostToDecal = Matrix4x4.identity;
         private int glowPropId;
         private bool hasEmissiveTex;
+        // 1.9: the template's specular colour; charred tiles fade towards matte scorch
+        private Color baseSpecColor = Color.gray;
+        private bool hasSpecColor;
+        private static readonly Color MatteScorch = new Color(0.04f, 0.035f, 0.03f, 1f);
 
         // World direction in the space of the decal data above, following the host as it moves (flap deflection, flex).
         public Vector3 DecalDirection(Vector3 world)
@@ -74,6 +78,8 @@ namespace AblatorDecals
         public void Apply(PartTiles t, Matrix4x4 decalToHost, Material tile, Material joint, Material back)
         {
             if (Go == null) return;
+            hasSpecColor = tile.HasProperty("_SpecColor");
+            baseSpecColor = hasSpecColor ? tile.GetColor("_SpecColor") : Color.gray;
             int bins = t.BinTriangles.Length;
             BinCount = bins;
             BinNormals = t.BinNormals;
@@ -199,19 +205,20 @@ namespace AblatorDecals
             }
         }
 
-        public void SetChar(Color c)
+        public void SetChar(Color c, float charAmt = 0f)
         {
             if (Go == null) return;
-            for (int i = 0; i < BinCount; i++)
-                if (Materials[i].HasProperty("_Color")) Materials[i].SetColor("_Color", c);
+            for (int i = 0; i < BinCount; i++) SetBinChar(i, c, charAmt);
         }
 
-        // 1.8: per-bin char (directional soot: windward bins darker)
-        public void SetBinChar(int bin, Color c)
+        // 1.8: per-bin char (directional soot: windward bins darker); 1.9: the specular fades to matte scorch with charAmt
+        public void SetBinChar(int bin, Color c, float charAmt = 0f)
         {
             if (Go == null || bin < 0 || bin >= BinCount || bin >= Materials.Length) return;
             Material m = Materials[bin];
-            if (m != null && m.HasProperty("_Color")) m.SetColor("_Color", c);
+            if (m == null) return;
+            if (m.HasProperty("_Color")) m.SetColor("_Color", c);
+            if (hasSpecColor && m.HasProperty("_SpecColor")) m.SetColor("_SpecColor", Color.Lerp(baseSpecColor, MatteScorch, Mathf.Clamp01(charAmt * 0.9f)));
         }
 
         // 1.7.1: the joint material glows too (KSP/Emissive/Diffuse), one colour per host

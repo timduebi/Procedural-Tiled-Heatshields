@@ -43,6 +43,7 @@ static class Program
     static int Main(string[] args)
     {
         if (args[0] == "--mask") return MaskMode(args);
+        if (args[0] == "--scan-windows") return ScanWindows(args[1], args[2]); // --scan-windows <gameData> <outFile>: ABLATORDECAL_WINDOWS boxes
         if (args[0] == "--mudump") // --mudump <.mu>: meshes (path, bounds, shader) and animation clips (moved transforms), debug
         {
             MuModel mu = MuModel.Load(args[1]);
@@ -210,6 +211,8 @@ static class Program
                     cover = true;
                     keepRcs = (cn.Get("keepRcs") ?? "").Trim().ToLowerInvariant() == "true";
                     if (cn.Get("ceramicSideDeg") is string csd) s.CeramicSideDeg = Flt(csd);
+                    if ((cn.Get("ceramicAll") ?? "").Trim().ToLowerInvariant() == "true") s.CeramicSideDeg = 90f; // 1.9 as the module
+                    s.CeramicAxis = (cn.Get("ceramicAxis") ?? "").Trim().ToLowerInvariant() == "true";
                     var planes = new List<Vector4>();
                     var cuts = new List<Vector4>();
                     foreach (Node pn in cn.Nodes.Where(c => c.Name == "PLANE"))
@@ -259,7 +262,13 @@ static class Program
             // 1.8: keepHatches=0|1 (default 0 on the Mk3 crew cabin with whole=1, as the module), smoothHull=0|1|auto (default 0)
             string kh = str(whole && Norm(decal.Parent.Name).Equals("mk3CrewCabin", StringComparison.OrdinalIgnoreCase) ? "0" : "1", "keepHatches").Trim().ToLowerInvariant();
             bool keepHatches = kh == "1" || kh == "true";
-            string smoothMode = str("0", "smoothHull").Trim().ToLowerInvariant();
+            // 1.9: keepWindows=0|1 (default 1 on all parts, as the module), boxes from windows=<cfg> or the repo's WindowKeepOuts.cfg
+            string kw = str("1", "keepWindows").Trim().ToLowerInvariant();
+            bool keepWindows = kw == "1" || kw == "true";
+            string winFile = str(Path.Combine(Directory.GetCurrentDirectory(), "GameData", "AblatorDecals", "WindowKeepOuts.cfg"), "windows");
+            var windowNodes = keepWindows && File.Exists(winFile)
+                ? Node.Parse(File.ReadAllText(winFile)).Nodes.Where(wn => wn.Name == "ABLATORDECAL_WINDOWS").ToList() : new List<Node>();
+            string smoothMode = str("auto", "smoothHull").Trim().ToLowerInvariant(); // 1.9: default auto, as the module
             if (smoothMode == "true") smoothMode = "1";
             if (whole)
             {
@@ -275,13 +284,20 @@ static class Program
                 {
                     Node tc = partConfigs[Norm(tp.Name)].part;
                     float rs = Flt(tc.Get("rescaleFactor") ?? "1.25");
+                    // 1.9 as the module: every stack node, occupied or not (flat stack faces, docking faces never tiled), except
+                    // nodes joined to another target
+                    var joined = new HashSet<string>();
                     foreach (string attn in tp.Node.All("attN"))
                     {
                         string[] f2 = attn.Split(',');
                         string idPart = f2[1].Split('|')[0], otherId = idPart.Substring(0, idPart.LastIndexOf('_'));
-                        string ndv = tc.Get("node_stack_" + f2[0]);
-                        if (otherId.StartsWith("Null") || ndv == null || targets.Any(t => t.Id == otherId)) continue;
-                        float[] nd = ndv.Split(',').Select(Flt).ToArray();
+                        if (targets.Any(t => t.Id == otherId)) joined.Add(f2[0]);
+                    }
+                    foreach (var nkv in tc.Values.Where(v => v.Key.StartsWith("node_stack_")).ToList())
+                    {
+                        if (joined.Contains(nkv.Key.Substring("node_stack_".Length))) continue;
+                        float[] nd = nkv.Value.Split(',').Select(Flt).ToArray();
+                        if (nd.Length < 6) continue;
                         Vector3 nPos = new Vector3(nd[0], nd[1], nd[2]);
                         Vector3 nDir = new Vector3(nd[3], nd[4], nd[5]).normalized;
                         if (Vector3.Dot(nDir, nPos) < 0 && !overrides.ContainsKey("rawNodes"))
@@ -335,6 +351,7 @@ static class Program
                 return Mathf.Abs(Vector3.Dot(q, u)) <= s.Width / 2 + s.TileSize && Mathf.Abs(Vector3.Dot(q, v)) <= s.Height / 2 + s.TileSize;
             }
             int parentMoving = -1;
+            var doorSkinGroup = new HashSet<int>(); // 1.9 as the module: radial service bay doors get a closed outer skin
             for (int ti = 0; ti < targets.Count; ti++)
             {
                 int main = bodyFlap.Count;
@@ -353,8 +370,33 @@ static class Program
                 bodyGroup.Add(group);
                 if (ShieldedPort(targets[ti])) portOf[main] = ti;
                 var flapIds = new Dictionary<string, int>();
-                foreach (var (verts, tris, flap) in HullMeshes(targets[ti]))
+                // 1.9 as the module: a radial service bay (cargo bay with >= 2 doors, not Mk2/Mk3) keeps only its doors' outer shell
+                var hullMeshes = HullMeshes(targets[ti]).ToList();
+                bool isBay = partConfigs[Norm(targets[ti].Name)].part.Nodes.Any(m => m.Name == "MODULE" && m.Get("name") == "ModuleCargoBay");
+                bool IsDoor(string fl) => fl != null && isBay && !FlapNames(targets[ti]).Any(fn => fl.Contains(fn));
+                bool radialBay = isBay && hullMeshes.Select(hm => hm.flap).Where(IsDoor).Distinct().Count() >= 2 &&
+                                 !targets[ti].Name.StartsWith("mk2", StringComparison.OrdinalIgnoreCase) && !targets[ti].Name.StartsWith("mk3", StringComparison.OrdinalIgnoreCase);
+                float maxDoorR = 0;
+                if (radialBay)
+                    foreach (var hm in hullMeshes.Where(hm => IsDoor(hm.flap)))
+                        foreach (Vector3 q in hm.verts) { Vector3 l = targets[ti].Xform.InverseApply(q); maxDoorR = Mathf.Max(maxDoorR, Mathf.Sqrt(l.x * l.x + l.z * l.z)); }
+                int doorDropped = 0;
+                foreach (var (verts, trisAll, flap) in hullMeshes)
                 {
+                    int[] tris = trisAll;
+                    if (radialBay && (flap == null || IsDoor(flap))) // 1.9 as the module: doors and frame keep only their outer shell
+                    {
+                        var kept = new List<int>();
+                        for (int i = 0; i + 2 < trisAll.Length; i += 3)
+                        {
+                            CraftPart bp = targets[ti];
+                            if (TileBuilder.DoorOuterFace(bp.Xform.InverseApply(verts[trisAll[i]]), bp.Xform.InverseApply(verts[trisAll[i + 1]]), bp.Xform.InverseApply(verts[trisAll[i + 2]]), maxDoorR))
+                            { kept.Add(trisAll[i]); kept.Add(trisAll[i + 1]); kept.Add(trisAll[i + 2]); }
+                            else doorDropped++;
+                        }
+                        tris = kept.ToArray();
+                        if (tris.Length == 0) continue;
+                    }
                     int bi = main;
                     if (flap != null && !flapIds.TryGetValue(flap, out bi))
                     {
@@ -375,6 +417,7 @@ static class Program
                         bodyGroup.Add(fg);
                         if (ShieldedPort(targets[ti])) portOf[bi] = ti;
                         if ((ShieldedPort(targets[ti]) || partConfigs[Norm(targets[ti].Name)].part.Nodes.Any(m => m.Name == "MODULE" && m.Get("name") == "ModuleCargoBay")) && !FlapNames(targets[ti]).Any(fl => flap.Contains(fl))) doorBody.Add(bi);
+                        if (radialBay && IsDoor(flap) && fg >= 0) doorSkinGroup.Add(fg);
                     }
                     int start = pos.Count;
                     pos.AddRange(verts.Select(p => decal.Xform.InverseApply(p)));
@@ -382,6 +425,8 @@ static class Program
                     foreach (int i in tris) tri.Add(start + i);
                     for (int k = 0; k < tris.Length / 3; k++) owner.Add(bi);
                 }
+                if (radialBay) Console.WriteLine($"  radial bay {targets[ti].Name}: door radius {maxDoorR:F3} m, inner door faces dropped {doorDropped}");
+                if (radialBay && ti == 0 && !str("on", "bayFrameSkin").Equals("off", StringComparison.OrdinalIgnoreCase)) s.Skin = true; // 1.9 as the module: closed frame skin
             }
             if (str(null, "whichBody") is string wb) // debug: bodies of hull triangles within 1 cm of a decal-local point
                 for (int i = 0; i < tri.Count; i += 3)
@@ -507,15 +552,30 @@ static class Program
                             {
                                 Xform x = w.Then(aw);
                                 keep.Add(decal.Xform.InverseApply(x.Apply((lo + hi) / 2)));
+                                Vector3 hh = TileBuilder.HatchKeepHalf(new Vector3((hi - lo).x / 2 * Mathf.Abs(x.Scale.x), (hi - lo).y / 2 * Mathf.Abs(x.Scale.y), (hi - lo).z / 2 * Mathf.Abs(x.Scale.z)));
                                 for (int k = 0; k < 3; k++)
                                 {
                                     Vector3 ax = k == 0 ? Vector3.right : k == 1 ? Vector3.up : Vector3.forward;
-                                    float half = (hi - lo)[k] / 2 * Mathf.Abs(x.Scale[k]) + 0.05f;
-                                    keep.Add(decal.Xform.InverseApplyDir(x.ApplyDir(ax)).normalized * half);
+                                    keep.Add(decal.Xform.InverseApplyDir(x.ApplyDir(ax)).normalized * hh[k]);
                                 }
                             }
                         }
                     }
+                int wins = 0;
+                foreach (CraftPart tp in targets) // 1.9 as the module: registered windows (part space), padded by TileBuilder.WindowKeepHalf
+                    foreach (Node wn in windowNodes.Where(wn => Norm(wn.Get("part") ?? "") == Norm(tp.Name)))
+                        foreach (Node w in wn.Nodes.Where(x => x.Name == "WINDOW"))
+                        {
+                            Vector3 half = TileBuilder.WindowKeepHalf(Vec(w.Get("size")) / 2);
+                            keep.Add(decal.Xform.InverseApply(tp.Xform.Apply(Vec(w.Get("center")))));
+                            for (int k = 0; k < 3; k++)
+                            {
+                                Vector3 ax = k == 0 ? Vector3.right : k == 1 ? Vector3.up : Vector3.forward;
+                                keep.Add(decal.Xform.InverseApplyDir(tp.Xform.ApplyDir(ax)).normalized * half[k]);
+                            }
+                            wins++;
+                        }
+                if (wins > 0) Console.WriteLine($"  window keep-outs {wins} ({winFile})");
                 if (keep.Count > 0) { s.KeepOut = keep.ToArray(); Console.WriteLine($"  keep-out boxes {keep.Count / 4}" + (overrides.ContainsKey("keepList") ? ": " + string.Join(" ", Enumerable.Range(0, keep.Count / 4).Select(i => decal.Xform.Apply(keep[4 * i])).Select(q => $"({q.x:F2},{q.y:F2},{q.z:F2})").Distinct()) : "")); }
             }
             if (bodyFlap.Contains(true) && str("True", "separate").Equals("true", StringComparison.OrdinalIgnoreCase)) s.SeparateOwner = bodyFlap.ToArray();
@@ -535,16 +595,41 @@ static class Program
             long mem0 = GC.GetTotalMemory(true);
             var watch = System.Diagnostics.Stopwatch.StartNew();
             // 1.8 smooth hull, as ModuleAblativeDecal.Work: 1 = forced fit, auto = only round parts
+            // as the module: auto only without a cockpit cover, on a parent without flaps/doors or inflatables
+            if (smoothMode == "auto" && (cover || bodyName.Any(nm => nm.StartsWith(targets[0].Name + "/")) ||
+                partConfigs[Norm(targets[0].Name)].part.Nodes.Any(m => m.Name == "MODULE" && ((m.Get("name") ?? "").Contains("Centrifuge") || (m.Get("name") ?? "").Contains("DeployableHabitat")))))
+                smoothMode = "0";
             SurfaceIndex.SmoothHullResult smooth = smoothMode == "1" || smoothMode == "auto"
                 ? SurfaceIndex.BuildSmoothHull(pos.ToArray(), tri.ToArray(), owner.ToArray(), 0, s.TankAxis, s.TankCenter, smoothMode == "1")
                 : null;
-            if (smooth != null) { pos = smooth.Pos.ToList(); tri = smooth.Tri.ToList(); owner = smooth.Owner.ToList(); }
+            if (smooth != null) { pos = smooth.Pos.ToList(); tri = smooth.Tri.ToList(); owner = smooth.Owner.ToList(); s.FillHull = str("on", "fill") != "off"; } // 1.9 as the module: dark joint bed
             if (smoothMode != "0") Console.WriteLine($"  smooth hull ({smoothMode}): {(smooth != null ? $"on, {smooth.Radius.Length} rings, r {smooth.Radius.Min():F3}..{smooth.Radius.Max():F3} m, {smooth.ProtrusionTri.Length / 3} protrusion tris" : "off (not round / too small)")}");
             var surface = new SurfaceIndex(pos.ToArray(), tri.ToArray(), Vector3.zero, reach, Mathf.Max(s.TileSize * 0.5f, 0.05f), Mathf.Clamp(s.TileSize * 0.4f, 0.02f, 0.3f), owner.ToArray());
             long indexMs = watch.ElapsedMilliseconds;
             var outlines = new List<TileOutline>();
             Dl = decal.Xform.InverseApply;
             TileResult r = TileBuilder.Build(surface, s, Vector3.zero, n, u, v, outlines);
+            // 1.8 as the module: decal glued onto the parent's own door (no hull under it closed): tile from the nearest face turned the
+            // decal's way; the parent's moving parts are tiled even where the cover does not reach them
+            bool doorFallback = !(r.OnSurface && r.TileCount > 0) && parentMoving >= 0;
+            if (doorFallback && !s.LimitedTank)
+            {
+                float best = 9f;
+                Vector3 altOrigin = Vector3.zero;
+                bool found = false;
+                for (int ft = 0; ft < owner.Count; ft++)
+                {
+                    int o = owner[ft];
+                    if (s.Obstacle != null && o >= 0 && o < s.Obstacle.Length && s.Obstacle[o]) continue;
+                    Vector3 a = pos[tri[3 * ft]], b = pos[tri[3 * ft + 1]], c = pos[tri[3 * ft + 2]];
+                    Vector3 fn = Vector3.Cross(b - a, c - a);
+                    if (fn.sqrMagnitude < 1e-16f || Vector3.Dot(fn.normalized, n) <= 0.35f) continue;
+                    Vector3 mid = (a + b + c) / 3;
+                    if (mid.sqrMagnitude >= best) continue;
+                    best = mid.sqrMagnitude; altOrigin = mid; found = true;
+                }
+                if (found) { outlines.Clear(); r = TileBuilder.Build(surface, s, altOrigin, n, u, v, outlines); Console.WriteLine($"  door fallback: origin {altOrigin}, {r.TileCount} tiles"); }
+            }
             if (smooth != null && r.OnSurface && r.TileCount > 0 && smooth.ProtrusionTri.Length > 0)
             {
                 Vector4[] skinCuts = s.CutPlanes?.Select(c => c.w > 0 ? -c : c).ToArray();
@@ -619,8 +704,22 @@ static class Program
                 // 1.6 as the module: an object the main cover does not reach stays bare
                 var foot = new List<Vector3>();
                 for (int i = 0; i < tileTris; i++) foot.Add(decal.Xform.InverseApply(fr.Apply(op[ot[i]])));
-                if (!cover && !overrides.ContainsKey("ovAll") && !TileBuilder.CoverReaches(r, foot, 2 * s.TileSize + 0.05f)) { Console.WriteLine($"  overlay {groups[g].name}: not reached by the cover, bare"); continue; }
-                if (groupSkin[g]) { os.WrapN = fr.InverseApplyDir(decal.Xform.ApplyDir(n)).normalized; os.Skin = true; os.GearSkin = mine.Any(gearBody.Contains); if (os.GearSkin) { os.WrapOwner = obst.Select(x => !x).ToArray(); os.MaxWrapDeg = Flt(str("95", "gearWrap")); } } // gear, intakes: closed skin
+                if (!cover && !overrides.ContainsKey("ovAll") && !(doorFallback && g == parentMoving) && !TileBuilder.CoverReaches(r, foot, 2 * s.TileSize + 0.05f)) { Console.WriteLine($"  overlay {groups[g].name}: not reached by the cover, bare"); continue; }
+                if (doorSkinGroup.Contains(g)) // 1.9 as the module: radial service bay doors, closed outer skin within Max wrap and cuts
+                {
+                    os.Skin = true;
+                    os.WrapOwner = obst.Select(x => !x).ToArray();
+                    os.WrapN = fr.InverseApplyDir(decal.Xform.ApplyDir(n)).normalized;
+                    os.MaxWrapDeg = s.MaxWrapDeg;
+                    if (!cover && s.CutPlanes != null)
+                        os.CutPlanes = s.CutPlanes.Select(c =>
+                        {
+                            Vector3 cn = new Vector3(c.x, c.y, c.z), cp = -c.w * cn;
+                            Vector3 on = fr.InverseApplyDir(decal.Xform.ApplyDir(cn)).normalized, op2 = fr.InverseApply(decal.Xform.Apply(cp));
+                            return new Vector4(on.x, on.y, on.z, -Vector3.Dot(on, op2));
+                        }).ToArray();
+                }
+                else if (groupSkin[g]) { os.WrapN = fr.InverseApplyDir(decal.Xform.ApplyDir(n)).normalized; os.Skin = true; os.GearSkin = mine.Any(gearBody.Contains); if (os.GearSkin) { os.WrapOwner = obst.Select(x => !x).ToArray(); os.MaxWrapDeg = Flt(str("95", "gearWrap")); } } // gear, intakes: closed skin
                 else // doors, ramps, flaps, fins, winglets follow the decal's Max wrap and height (its turn only), as the module
                 {
                     os.Skin = !inw.Any(x => x);
@@ -876,6 +975,13 @@ static class Program
                 Vector3 lo = Vector3.one * float.MaxValue, hi = Vector3.one * float.MinValue;
                 foreach (TileOutline t in outlines) { lo = Vector3.Min(lo, t.Center); hi = Vector3.Max(hi, t.Center); }
                 focus = decal.Xform.Apply((lo + hi) * 0.5f);
+                extent = Mathf.Max(0.5f, (hi - lo).magnitude);
+            }
+            if (cover && vpos.Count > 0) // 1.9: a cockpit cover shields only part of the part: frame the whole part, never a crop of it
+            {
+                Vector3 lo = Vector3.one * float.MaxValue, hi = Vector3.one * float.MinValue;
+                foreach (Vector3 q in vpos) { lo = Vector3.Min(lo, q); hi = Vector3.Max(hi, q); }
+                focus = (lo + hi) * 0.5f;
                 extent = Mathf.Max(0.5f, (hi - lo).magnitude);
             }
             float dist = 0.75f * extent / Mathf.Tan(20 * Mathf.Deg2Rad) + 0.5f;
@@ -1598,6 +1704,9 @@ static class Program
             {
                 if (!m.HasRenderer || m.Vertices == null || m.Skinned) continue; // the module reads MeshFilters only (skinned: gear)
                 var verts = m.Vertices.Select(q => toVessel.Apply(q)).ToArray();
+                // 1.9: a mesh mirrored inside the model (negative scale on its own transform chain, e.g. ReStock's service bay door
+                // 'Door001 1') flips its winding too; only the part/MODEL mirror was honoured, so DoorOuterFace saw that door inside out
+                bool mirrored = toVessel.Mirrored ^ mu.Transforms[m.Node].world.Mirrored;
                 var tris = new List<int>();
                 for (int s = 0; s < m.Submeshes.Count; s++)
                 {
@@ -1607,7 +1716,7 @@ static class Program
                     int[] t = m.Submeshes[s];
                     for (int i = 0; i + 2 < t.Length; i += 3)
                     {
-                        int i0 = t[i], i1 = toVessel.Mirrored ? t[i + 2] : t[i + 1], i2 = toVessel.Mirrored ? t[i + 1] : t[i + 2];
+                        int i0 = t[i], i1 = mirrored ? t[i + 2] : t[i + 1], i2 = mirrored ? t[i + 1] : t[i + 2];
                         if (intake && TileBuilder.IntakeOpening(verts[i0], verts[i1], verts[i2], inPos, inFwd, inFront))
                         {
                             if (overrides.ContainsKey("intakeDebug"))
@@ -1727,6 +1836,198 @@ static class Program
                 }
         }
         return false;
+    }
+
+    // ---------- 1.9: window scanner ----------
+
+    static readonly string[] WindowScanDirs = { "Squad", "SquadExpansion", "ReStock", "ReStockPlus", "NearFutureSpacecraft", "StationPartsExpansionRedux" };
+
+    // Every crewed part (CrewCapacity > 0) of the mods above: triangles whose _Emissive texels are bright (max RGB > 0.25 at a corner,
+    // edge midpoint or the centroid) are window glass; clustered (within 0.15 m) into part-space boxes, clusters under 0.08 m (indicator
+    // LEDs) dropped. Parts from ModuleManager.ConfigCache if present, else from the mods' .cfg files with ReStock/ReStockPlus MODEL
+    // replacements (Patches/**/*.cfg) applied. Writes a summary and ABLATORDECAL_WINDOWS blocks.
+    static int ScanWindows(string gd, string outFile)
+    {
+        gameData = gd;
+        overrides = new Dictionary<string, string>();
+        partConfigs.Clear();
+        string cache = Path.Combine(gameData, "ModuleManager.ConfigCache");
+        bool fromCache = File.Exists(cache);
+        if (fromCache) LoadConfigCache(cache);
+        else
+        {
+            foreach (string mod in WindowScanDirs)
+            {
+                string dir = Path.Combine(gameData, mod);
+                if (!Directory.Exists(dir)) continue;
+                foreach (string file in Directory.GetFiles(dir, "*.cfg", SearchOption.AllDirectories))
+                {
+                    string rel = Path.GetDirectoryName(file.Substring(gameData.Length).TrimStart('\\', '/')).Replace('\\', '/');
+                    if (rel.Split('/').Any(s => s.Equals("Patches", StringComparison.OrdinalIgnoreCase))) continue;
+                    foreach (Node pn in SafeParse(file).Nodes.Where(n => n.Name == "PART" && n.Get("name") != null))
+                        partConfigs[Norm(pn.Get("name"))] = (pn, rel);
+                }
+            }
+            // ReStock / ReStockPlus art patches: their MODEL nodes replace the part's models (!MODEL,* / !mesh), as with ReStock installed
+            int patched = 0;
+            foreach (string mod in new[] { "ReStock", "ReStockPlus" })
+            {
+                string dir = Path.Combine(gameData, mod, "Patches");
+                if (!Directory.Exists(dir)) continue;
+                foreach (string file in Directory.GetFiles(dir, "*.cfg", SearchOption.AllDirectories))
+                    foreach (Node patch in SafeParse(file).Nodes.Where(n => n.Name.StartsWith("@PART[")))
+                    {
+                        var models = patch.Nodes.Where(n => n.Name == "MODEL").ToList();
+                        if (models.Count == 0 || patch.Name.Contains(":NEEDS[") && !NeedsMet(patch.Name)) continue;
+                        string names = patch.Name.Substring(6, patch.Name.IndexOf(']') - 6);
+                        foreach (string pnm in names.Split('|', ','))
+                        {
+                            if (!partConfigs.TryGetValue(Norm(pnm), out var pc) || pnm.Contains("*")) continue;
+                            pc.part.Nodes.RemoveAll(n => n.Name == "MODEL");
+                            pc.part.Values.RemoveAll(v => v.Key == "mesh");
+                            pc.part.Nodes.AddRange(models);
+                            patched++;
+                        }
+                    }
+            }
+            Console.WriteLine($"  {partConfigs.Count} parts from .cfg files, {patched} ReStock model replacements");
+        }
+        var textures = new Dictionary<string, Texture>(StringComparer.OrdinalIgnoreCase);
+        Texture LoadTex(string path)
+        {
+            if (path == null) return null;
+            if (textures.TryGetValue(path, out Texture tx)) return tx;
+            try { tx = path.EndsWith(".dds", StringComparison.OrdinalIgnoreCase) ? Texture.LoadDds(path) : Texture.Load(path); }
+            catch (Exception e) { Console.WriteLine($"  cannot read {path}: {e.Message}"); tx = null; }
+            return textures[path] = tx;
+        }
+        var report = new System.Text.StringBuilder();
+        var blocks = new System.Text.StringBuilder();
+        int crewed = 0, windowed = 0, boxes = 0;
+        foreach (var kv in partConfigs.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            Node cfg = kv.Value.part;
+            string dir = kv.Value.dir;
+            if (!WindowScanDirs.Any(m => dir.Equals(m, StringComparison.OrdinalIgnoreCase) || dir.StartsWith(m + "/", StringComparison.OrdinalIgnoreCase))) continue;
+            if (!int.TryParse(cfg.Get("CrewCapacity") ?? "0", NumberStyles.Integer, CultureInfo.InvariantCulture, out int crew) || crew <= 0) continue;
+            crewed++;
+            var root = new Xform { Pos = Vector3.zero, Rot = Quaternion.identity, Scale = Vector3.one * Flt(cfg.Get("rescaleFactor") ?? "1.25") };
+            var modelNodes = cfg.Nodes.Where(m => m.Name == "MODEL").ToList();
+            var entries = modelNodes.Count > 0
+                ? modelNodes.Select(m => (url: m.Get("model"), local: new Xform { Pos = Vec(m.Get("position") ?? "0,0,0"), Rot = Xform.Euler(Vec(m.Get("rotation") ?? "0,0,0")), Scale = Vec(m.Get("scale") ?? "1,1,1") },
+                    texMap: m.All("texture").Select(s => s.Split(',')).Where(s => s.Length == 2).GroupBy(s => s[0].Trim(), StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First()[1].Trim(), StringComparer.OrdinalIgnoreCase))).ToList()
+                : new[] { (url: MeshUrl(dir, cfg.Get("mesh")), local: Xform.Identity, texMap: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)) }.ToList();
+            var glass = new List<(Vector3 lo, Vector3 hi)>();
+            var texUsed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (url, local, texMap) in entries)
+            {
+                if (string.IsNullOrEmpty(url)) continue;
+                MuModel mu = Model(url);
+                if (mu == null) continue;
+                string muDir = Path.GetDirectoryName(Path.Combine(gameData, url.Replace('/', Path.DirectorySeparatorChar)));
+                string Resolve(string texName)
+                {
+                    string stem = Path.GetFileNameWithoutExtension(texName);
+                    if (texMap.TryGetValue(stem, out string repl)) { string rp = Path.Combine(gameData, repl.Replace('/', Path.DirectorySeparatorChar)); foreach (string ext in new[] { ".dds", ".png" }) if (File.Exists(rp + ext)) return rp + ext; }
+                    foreach (string ext in new[] { ".dds", ".png" }) if (File.Exists(Path.Combine(muDir, stem + ext))) return Path.Combine(muDir, stem + ext);
+                    return null;
+                }
+                string fallback = null; // emissive shader without a recorded map: *-e / *emit* / *lum* texture next to the model
+                if (Directory.Exists(muDir))
+                    fallback = Directory.GetFiles(muDir, "*.dds").FirstOrDefault(p => Path.GetFileNameWithoutExtension(p).EndsWith("-e", StringComparison.OrdinalIgnoreCase) ||
+                        Path.GetFileName(p).IndexOf("emit", StringComparison.OrdinalIgnoreCase) >= 0 || Path.GetFileName(p).IndexOf("lum", StringComparison.OrdinalIgnoreCase) >= 0);
+                Xform toPart = root.Then(local);
+                foreach (MuMesh m in mu.Meshes)
+                {
+                    if (!m.HasRenderer || m.Skinned || m.Vertices == null || m.Uv == null || m.Uv.Length != m.Vertices.Length) continue;
+                    for (int slot = 0; slot < m.Submeshes.Count; slot++)
+                    {
+                        int mat = slot < m.MaterialIds.Length ? m.MaterialIds[slot] : -1;
+                        if (mat < 0 || mat >= mu.Shaders.Count || SkipShaders.Any(mu.Shaders[mat].Contains)) continue;
+                        int ei = mat < mu.EmissiveTex.Count ? mu.EmissiveTex[mat] : -1;
+                        string texPath = ei >= 0 && ei < mu.Textures.Count ? Resolve(mu.Textures[ei]) : null;
+                        if (texPath == null && mu.Shaders[mat].Contains("Emissive")) texPath = fallback;
+                        Texture tex = LoadTex(texPath);
+                        if (tex == null) continue;
+                        texUsed.Add(Path.GetFileName(texPath));
+                        int[] sm = m.Submeshes[slot];
+                        for (int i = 0; i + 2 < sm.Length; i += 3)
+                        {
+                            Vector2 a = m.Uv[sm[i]], b = m.Uv[sm[i + 1]], c = m.Uv[sm[i + 2]];
+                            float bright = 0;
+                            foreach (Vector2 q in new[] { a, b, c, (a + b + c) / 3, (a + b) / 2, (b + c) / 2, (c + a) / 2 })
+                            {
+                                Color col = tex.Sample(q);
+                                bright = Mathf.Max(bright, Mathf.Max(col.r, Mathf.Max(col.g, col.b)));
+                            }
+                            if (bright <= 0.25f) continue;
+                            Vector3 pa = toPart.Apply(m.Vertices[sm[i]]), pb = toPart.Apply(m.Vertices[sm[i + 1]]), pc = toPart.Apply(m.Vertices[sm[i + 2]]);
+                            glass.Add((Vector3.Min(pa, Vector3.Min(pb, pc)), Vector3.Max(pa, Vector3.Max(pb, pc))));
+                        }
+                    }
+                }
+            }
+            // ponytail: O(n^2) union-find over glass triangles, a few thousand per part at most
+            var parent = Enumerable.Range(0, glass.Count).ToArray();
+            int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
+            const float near = 0.02f; // 1.9: 2 cm, separate panes stay separate boxes (was 15 cm: mk1-3pod got one 80 cm box)
+            for (int i = 0; i < glass.Count; i++)
+                for (int j = i + 1; j < glass.Count; j++)
+                {
+                    Vector3 gap = Vector3.Max(glass[i].lo - glass[j].hi, glass[j].lo - glass[i].hi);
+                    if (Mathf.Max(gap.x, Mathf.Max(gap.y, gap.z)) <= near) parent[Find(i)] = Find(j);
+                }
+            var clusters = glass.Select((g, i) => (g, root: Find(i))).GroupBy(x => x.root)
+                .Select(g => (lo: g.Select(x => x.g.lo).Aggregate(Vector3.Min), hi: g.Select(x => x.g.hi).Aggregate(Vector3.Max), tris: g.Count()))
+                .Where(c => Mathf.Max(c.hi.x - c.lo.x, Mathf.Max(c.hi.y - c.lo.y, c.hi.z - c.lo.z)) >= 0.08f)
+                .OrderBy(c => -c.hi.y).ThenBy(c => c.lo.x).ToList();
+            string name = cfg.Get("name");
+            report.AppendLine($"{name} ({dir}, crew {crew}): {clusters.Count} windows from {glass.Count} glass tris; emissive {(texUsed.Count > 0 ? string.Join(", ", texUsed) : "none found")}");
+            if (clusters.Count == 0) continue;
+            windowed++;
+            boxes += clusters.Count;
+            string F3(float x) => x.ToString("F3", CultureInfo.InvariantCulture);
+            blocks.AppendLine("ABLATORDECAL_WINDOWS");
+            blocks.AppendLine("{");
+            blocks.AppendLine($"\tpart = {name}");
+            foreach (var c in clusters)
+            {
+                Vector3 ctr = (c.lo + c.hi) / 2, size = c.hi - c.lo;
+                report.AppendLine($"    window center ({F3(ctr.x)}, {F3(ctr.y)}, {F3(ctr.z)}) size ({F3(size.x)}, {F3(size.y)}, {F3(size.z)}) tris {c.tris}");
+                blocks.AppendLine("\tWINDOW");
+                blocks.AppendLine("\t{");
+                blocks.AppendLine($"\t\tcenter = {F3(ctr.x)}, {F3(ctr.y)}, {F3(ctr.z)}");
+                blocks.AppendLine($"\t\tsize = {F3(size.x)}, {F3(size.y)}, {F3(size.z)}");
+                blocks.AppendLine("\t}");
+            }
+            blocks.AppendLine("}");
+        }
+        string summary = $"// AblatorDecals window scan of {gameData} ({(fromCache ? "ModuleManager.ConfigCache" : ".cfg files + ReStock patches")})\r\n" +
+                         $"// crewed parts: {crewed}, with windows: {windowed}, window boxes: {boxes}\r\n";
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outFile)));
+        File.WriteAllText(outFile, summary + "\r\n/*\r\n" + report.ToString().Replace("*/", "* /") + "*/\r\n\r\n" + blocks, new System.Text.UTF8Encoding(false));
+        Console.WriteLine($"  crewed parts {crewed}, with windows {windowed}, window boxes {boxes} -> {outFile}");
+        return 0;
+    }
+
+    static Node SafeParse(string file)
+    {
+        try { return Node.Parse(File.ReadAllText(file)); }
+        catch (Exception e) { Console.WriteLine($"  cannot parse {file}: {e.Message}"); return new Node { Name = "root" }; }
+    }
+
+    // :NEEDS[A,B&C,!D] against the mod folders in GameData (rough: folder names only)
+    static bool NeedsMet(string header)
+    {
+        int s = header.IndexOf(":NEEDS[", StringComparison.Ordinal) + 7, e = header.IndexOf(']', s);
+        if (e < 0) return true;
+        return header.Substring(s, e - s).Split(',', '&').All(term =>
+        {
+            string mod = term.Trim();
+            bool not = mod.StartsWith("!");
+            if (not) mod = mod.Substring(1);
+            return Directory.Exists(Path.Combine(gameData, mod)) != not;
+        });
     }
 
     // mesh = file in the part's folder; like KSP, any .mu there when that file does not exist (old Squad configs)
@@ -1943,7 +2244,7 @@ static class Program
         }
 
         int leaks = 0;
-        if (overrides.ContainsKey("pick")) { var pp = overrides["pick"].Split(':'); int qx = int.Parse(pp[0]), qy = int.Parse(pp[1]); float zz = z[qy * W + qx]; Vector3 lp = Dl(eye + right * ((qx + 0.5f - W / 2f) * zz / focal) + up * (-(qy + 0.5f - H / 2f) * zz / focal) + fwd * zz); Console.WriteLine($"   pick local ({lp.x:F3},{lp.y:F3},{lp.z:F3}) kind {kind[qy * W + qx]}"); }
+        if (overrides.ContainsKey("pick")) { var pp = overrides["pick"].Split(':'); int qx = int.Parse(pp[0]), qy = int.Parse(pp[1]); float zz = z[qy * W + qx]; Vector3 wp = eye + right * ((qx + 0.5f - W / 2f) * zz / focal) + up * (-(qy + 0.5f - H / 2f) * zz / focal) + fwd * zz, lp = Dl(wp); Console.WriteLine($"   pick local ({lp.x:F3},{lp.y:F3},{lp.z:F3}) vessel ({wp.x:F3},{wp.y:F3},{wp.z:F3}) kind {kind[qy * W + qx]}"); }
         for (int y = 0; y < H; y++)
             for (int x = 0; x < W; x++)
             {

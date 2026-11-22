@@ -4,7 +4,7 @@ Sprache: [English](README.md) | **Deutsch**
 
 AblatorDecals ist ein Mod für Kerbal Space Program 1.12.5. Das Part "Ablative Decal" (Anzeigename im Spiel: "Ablative Hitzekacheln") wird wie ein Decal auf die Oberfläche eines Parts geklebt. Es legt dünne 3D-Hitzekacheln auf das gewählte Teil. Angebautes Fahrwerk, Lufteinlässe und Steuerflächen können eine eigene Kachelhülle erhalten. Auf beweglichen Teilen fahren die Kacheln mit. Die Kacheln sehen aus wie bei Starship (Sechsecke) oder Space Shuttle (eckige Kacheln). Thermisch ist das Decal ein Ablator-Hitzeschild: Es nimmt beim Wiedereintritt Wärme von den Teilen auf, auf denen es liegt, und verbraucht dabei Ablator. Das Ganze bleibt ein einziges Part.
 
-Version 1.8.0 wurde mit dem vollständigen Selbsttest und dem Vorschauwerkzeug an Stock- und ReStock-Modellen geprüft. Änderungen stehen im [CHANGELOG](CHANGELOG.de.md), der Wiedereinstieg in [docs/CLAUDE-HANDOFF.md](docs/CLAUDE-HANDOFF.md).
+Version 1.9.0 wurde mit dem vollständigen Selbsttest und dem Vorschauwerkzeug an Stock-, Making-History-, ReStock-, ReStockPlus-, SSPX- und Near-Future-Modellen geprüft. Änderungen stehen im [CHANGELOG](CHANGELOG.de.md), der Wiedereinstieg in [docs/CLAUDE-HANDOFF.md](docs/CLAUDE-HANDOFF.md).
 
 ## Installation
 
@@ -41,8 +41,10 @@ Aufbau des Fensters (von oben nach unten):
 
 1. **Statuszeilen** ohne Gruppe: im Editor "Abgedeckte Fläche" (m²), "Kacheln", "Abgedeckte Teile", "Ablator" (Einheiten), "Kachelmasse" (kg); im Flug Fläche und Schutz (siehe [Anzeigen im Flug](#anzeigen-im-flug)).
 2. **Kacheln**: Muster, Kachelart, Kachelgröße, Musterwinkel, Fugenbreite, Dicke.
-3. **Fläche**: Abdeckung (Ganzes Teil / Fläche begrenzen), Breite und Höhe (nur bei "Fläche begrenzen"), Max. Umgriff, Bedeckte Höhe, Abwickeln, Rand.
-4. **Feinheiten** (eingeklappt): Textur und Texturmaßstab (nur bei "Schlichte Keramik"), Kachelverlust, "Kacheln neu mischen".
+3. **Fläche**: Max. Umgriff, Bedeckte Höhe, Rumpffläche (Glatter Zylinder / Exaktes Modell), Cockpitform (bei unterstützten Cockpits, Kapseln und Landern).
+4. **Feinheiten** (eingeklappt): Textur und Texturmaßstab (nur bei „Schlichte Keramik“), Kachelverlust, Verwitterung, Kachel-Abplatzen, Luken frei lassen, Fenster frei lassen, „Kacheln neu mischen“.
+
+Das Editor-Fenster (`DecalWindow`) bietet außerdem **Vorlagen**, **Alle Hitzeschilde hervorheben** sowie **Ganze Unterseite bekacheln** (mit Richtungsauswahl und Strg+Z-Rückgängig).
 
 | Gruppe | Deutsch | Englisch | Bereich | Standard | Wirkung |
 |---|---|---|---|---|---|

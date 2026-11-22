@@ -46,5 +46,24 @@ static class GlowChecks
         Check(hotWind > 1450 && hotLee < 1200, $"glow hot reentry gradient: lee={hotLee:F0} K, windward={hotWind:F0} K");
         Check(TileGlow.EffectiveFacing(0.0, 310, 850) >= 0.65 && TileGlow.EffectiveFacing(0.0, 2000, 850) == 0.0,
             "glow effective facing: cools in level flight, heats only windward");
+
+        // 1.9: lee 0.15 .. stagnation 1.25; directional weighting off at <= 720 K air, full at >= 900 K
+        Check(Math.Abs(TileGlow.LocalWeight(0, 1) - 0.15) < 1e-9 && Math.Abs(TileGlow.LocalWeight(1, 1) - 1.25) < 1e-9,
+            $"glow local weight 0.15..1.25 ({TileGlow.LocalWeight(0, 1):F2}..{TileGlow.LocalWeight(1, 1):F2})");
+        Check(Math.Abs(TileGlow.BinTemp(600, 900, 720, 1.0, 1.0) - 900) < 1e-9 && Math.Abs(TileGlow.BinTemp(600, 900, 720, 0.0, 1.0) - 900) < 1e-9,
+            "glow onset: no directional weighting at 720 K air");
+        Check(Math.Abs(TileGlow.BinTemp(600, 900, 900, 0.0, 1.0) - 645) < 1e-6, "glow onset: full lee weighting at 900 K air");
+
+        // 1.9: fast post-reentry cool-down (module defaults: heat capacity 10, conduction 0.08, emissivity 0.95) in 250 K air
+        // under a dense-air film (h = 0.5 kW/m2K): 1300 K below 720 K (no glow) within 15 s; the 1.8 defaults took > 30 s
+        double CoolTime(double cap, double cond)
+        {
+            var g = new TileGlow(1300) { Emissivity = 0.95, HeatCapacity = cap, Conduction = cond };
+            double t = 0;
+            while (g.T > 720 && t < 120) { g.Step(0.02, 250, 250, 0.5, 1); t += 0.02; }
+            return t;
+        }
+        double fast = CoolTime(10, 0.08), slow = CoolTime(30, 0.02);
+        Check(fast < 15 && slow > 30, $"glow post-reentry cool-down 1300 -> 720 K: {fast:F1} s (1.8 defaults {slow:F1} s)");
     }
 }
