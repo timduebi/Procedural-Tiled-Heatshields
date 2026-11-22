@@ -4,7 +4,7 @@ Sprache: [English](README.md) | **Deutsch**
 
 Procedural Tiled Heatshield (`AblatorDecals`) ist ein Mod für Kerbal Space Program 1.12.5. Das Part "Ablative Decal" (Anzeigename im Spiel: "Ablative Hitzekacheln") wird wie ein Decal auf die Oberfläche eines Parts geklebt. Es legt dünne 3D-Hitzekacheln auf das gewählte Teil. Angebautes Fahrwerk, Lufteinlässe und Steuerflächen können eine eigene Kachelhülle erhalten. Auf beweglichen Teilen fahren die Kacheln mit. Die Kacheln sehen aus wie bei Starship (Sechsecke) oder Space Shuttle (eckige Kacheln). Thermisch ist das Decal ein Ablator-Hitzeschild: Es nimmt beim Wiedereintritt Wärme von den Teilen auf, auf denen es liegt, und verbraucht dabei Ablator. Das Ganze bleibt ein einziges Part.
 
-Version 1.11.3 wurde mit dem vollständigen Selbsttest und dem Vorschauwerkzeug an Stock-, Making-History-, ReStock-, ReStockPlus-, SSPX- und Near-Future-Modellen geprüft. Änderungen stehen im [CHANGELOG](CHANGELOG.de.md), der Wiedereinstieg in [docs/CLAUDE-HANDOFF.md](docs/CLAUDE-HANDOFF.md).
+Version 1.11.4 wurde mit dem vollständigen Selbsttest und dem Vorschauwerkzeug an Stock-, Making-History-, ReStock-, ReStockPlus-, SSPX- und Near-Future-Modellen geprüft. Änderungen stehen im [CHANGELOG](CHANGELOG.de.md), der Wiedereinstieg in [docs/CLAUDE-HANDOFF.md](docs/CLAUDE-HANDOFF.md).
 
 ## Installation
 

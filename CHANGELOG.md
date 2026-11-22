@@ -2,6 +2,11 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.11.4 (2026-11-23)
+
+- **Hotfix: Reentry Charring & Streaks Restored (`ModuleAblativeDecal.cs`):**
+  - Fixed a Unity API trap in v1.11.3 where `Mathf.SmoothStep(0.006f, 0.025f, u)` interpolated between `0.006` and `0.025` instead of returning `[0, 1]`, multiplying all reentry charring by `~0.006` (making it invisible). Replaced with a proper `[0, 1]` `SmoothStep01(e0, e1, x)` helper for both the delayed onset and the glow-fade mask.
+
 ## 1.11.3 (2026-11-22)
 
 - **Delayed, Glow-Aware Streak Onset & Seamless Vessel-Wide Projection (`CharStreaks.cs`, `TileHost.cs`, `ModuleAblativeDecal.cs`):**

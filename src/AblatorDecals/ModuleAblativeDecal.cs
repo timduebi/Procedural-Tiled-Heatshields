@@ -670,7 +670,7 @@ namespace AblatorDecals
                 // flow turns (streaks re-projected by TileHost past 10 deg)
                 VesselChar vc = CharField();
                 float uni = vc != null ? 0.95f * vc.Used + 0.05f * used : used;
-                float gMask = 1f - Mathf.SmoothStep(0.08f, 0.45f, (float)glowShownMax);
+                float gMask = 1f - SmoothStep01(0.08f, 0.45f, (float)glowShownMax);
                 if (Mathf.Abs(used - appliedChar) >= 0.003f || Mathf.Abs(uni - appliedUnified) >= 0.003f ||
                     Mathf.Abs(gMask - appliedGlowMask) >= 0.02f ||
                     (vc != null && Vector3.Angle(vc.Flow, appliedFlow) > 10f)) ApplyChar(used);
@@ -784,6 +784,13 @@ namespace AblatorDecals
         // 1.10: one char level for the whole vessel (80 % the vessel's area-weighted ablator use, 20 % this decal's) with a gentle
         // nose-to-tail gradient along the flow, so neighbouring shields match across their seams; black tiles only dust towards
         // warm ash (the streaks carry the look), white/steel/ceramic soot to charcoal; plus wind-aligned streaks (TileHost)
+        // GLSL-style smoothstep returning [0, 1] over [e0, e1] (Unity's Mathf.SmoothStep(from, to, t) interpolates outputs!)
+        private static float SmoothStep01(float e0, float e1, float x)
+        {
+            float t = Mathf.Clamp01((x - e0) / (e1 - e0));
+            return t * t * (3f - 2f * t);
+        }
+
         private void ApplyChar(float used)
         {
             appliedChar = used;
@@ -796,7 +803,7 @@ namespace AblatorDecals
             appliedFlow = flow;
             // 1.11.3: hide the un-emissive streak overlay while tiles glow hot so dark lines never sit over reentry flames;
             // streaks emerge smoothly as the tiles cool down after peak heating
-            float glowMask = HighLogic.LoadedSceneIsFlight ? (1f - Mathf.SmoothStep(0.08f, 0.45f, (float)glowShownMax)) : 1f;
+            float glowMask = HighLogic.LoadedSceneIsFlight ? (1f - SmoothStep01(0.08f, 0.45f, (float)glowShownMax)) : 1f;
             appliedGlowMask = glowMask;
             Vector3 belly = vc != null ? vc.Belly : (root != null ? root.InverseTransformDirection(part.partTransform.TransformDirection(shieldNormal)) : Vector3.forward);
             float bellyZ = vc != null ? vc.BellyZ : 0f;
@@ -854,7 +861,7 @@ namespace AblatorDecals
                     // 1.11.3: smooth delayed onset — stays clean during the first seconds of reentry (u < 0.006),
                     // reaches ~0.50 after one Kerbin reentry (u ~ 0.06) and climbs to 1.0 across 2+ reentries (u >= 0.22)
                     float u = uni * dirFactor;
-                    float onset = Mathf.SmoothStep(0.006f, 0.025f, u);
+                    float onset = SmoothStep01(0.006f, 0.025f, u);
                     float reentryAmt = onset * Mathf.Pow(Mathf.Clamp01((u - 0.004f) * 4.2f), 0.54f);
                     float amt = Mathf.Clamp01(baseWeath + reentryAmt);
                     h.SetBinChar(b, Color.Lerp(baseCol, charCol, amt * colScale), amt);

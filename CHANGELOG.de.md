@@ -2,6 +2,11 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.11.4 (2026-11-23)
+
+- **Hotfix: Reentry-Verkohlung & Windstreifen wieder sichtbar (`ModuleAblativeDecal.cs`):**
+  - Behebt eine Unity-API-Falle aus v1.11.3: `Mathf.SmoothStep(0.006f, 0.025f, u)` liefert in Unity Werte zwischen `0,006` und `0,025` statt `0..1`, wodurch die gesamte Verwitterung mit `~0,006` multipliziert und praktisch unsichtbar wurde. Durch echtes `SmoothStep01(e0, e1, x)` (Bereich `0..1`) für den verzögerten Beginn und die Glüh-Ausblendung ersetzt.
+
 ## 1.11.3 (2026-11-22)
 
 - **Späterer, glühbewusster Streifen-Beginn & nahtlose schiffsweite Projektion (`CharStreaks.cs`, `TileHost.cs`, `ModuleAblativeDecal.cs`):**
