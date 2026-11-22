@@ -18,6 +18,7 @@ static class Program
     static int Main(string[] args)
     {
         if (args.Length > 0 && args[0] == "v17") { V162SkinChartCheck(); V17SquareCreaseCheck(); Console.WriteLine("SelfCheck v17 OK"); return 0; } // quick: 1.7 only
+        if (args.Length > 0 && args[0] == "v191") { V191Checks(); Console.WriteLine("SelfCheck v191 OK"); return 0; } // quick: 1.9.1 only
         if (args.Length > 0 && args[0] == "v18") { SmoothHullChecks(); WholeIslandChecks(); Console.WriteLine("SelfCheck v18 OK"); return 0; } // quick: 1.8 only
         if (args.Length > 0 && args[0] == "v11") // quick: only the DESIGN-v11 checks
         {
@@ -71,6 +72,7 @@ static class Program
         V11CoverFileChecks();
         SmoothHullChecks();
         WholeIslandChecks();
+        V191Checks();
         PerformanceCheck();
         GlowChecks.Run();
         Console.WriteLine("SelfCheck OK");
@@ -1733,6 +1735,75 @@ static class Program
             tank = Merge(tank, new Mesh { V = pipe.V.Select(p => p + at).ToArray(), T = pipe.T });
         }
         return tank;
+    }
+
+    // 1.9.1: decal right on a hatch/window keep-out (Large_Crewed_Lab sides) still tiles, from the nearest free hull point;
+    // FreeIva's free radial hatch nodes cut nothing; a 15 m smooth tank keeps its tile frame on the axis (no drift scars).
+    static void V191Checks()
+    {
+        Check(TileBuilder.FreeNodeCuts("top", Vector3.up) && TileBuilder.FreeNodeCuts("bottom", Vector3.down) &&
+              !TileBuilder.FreeNodeCuts("back", Vector3.back) && !TileBuilder.FreeNodeCuts("airlockR", Vector3.forward) &&
+              !TileBuilder.FreeNodeCuts("hatchTop", Vector3.up), "v1.9.1 free stack nodes: only axial non-hatch nodes cut");
+
+        float r = 1.25f, h = 0.3f;
+        Mesh can = Cylinder(r, -2, 2, 64, 0, 0, 0);
+        Vector3 c = new Vector3(r, 0, 0), a1 = new Vector3(0.6f * h, 0, 0), a2 = new Vector3(0, h, 0), a3 = new Vector3(0, 0, h);
+        bool In(Vector3 q, float m) => Mathf.Abs(q.x - c.x) < 0.6f * h - m && Mathf.Abs(q.y) < h - m && Mathf.Abs(q.z) < h - m;
+        foreach (TileShape shape in new[] { TileShape.Hex, TileShape.Square })
+        {
+            var set = new TileSettings { Shape = shape, TileSize = 0.1f, Thickness = 0.025f, Width = 10, Height = 10, MaxWrapDeg = 180,
+                                         KeepOut = new[] { c, a1, a2, a3 }, TankAxis = Vector3.up };
+            Run b = Build(Index(can, 0.1f), set, c, Vector3.right, Vector3.up);
+            int inside = b.T.Count(t => t.Outline.Any(q => In(q, 0.002f)));
+            int ring = 0, covered = 0;
+            for (float y = -0.6f; y <= 0.6f; y += 0.05f)
+                for (float ang = -0.6f; ang <= 0.6f; ang += 0.05f)
+                {
+                    Vector3 d = new Vector3(Mathf.Cos(ang), 0, Mathf.Sin(ang)), q = d * r + Vector3.up * y;
+                    if (Mathf.Abs(y) < h + 0.07f && Mathf.Abs(q.z) < h + 0.07f) continue; // the box and its cut rim
+                    ring++;
+                    if (CoveredAt(b, q, d)) covered++;
+                }
+            Check(b.R.OnSurface && b.R.TileCount > 500 && inside == 0 && covered >= 0.95f * ring && ValidMesh(b),
+                $"v1.9.1 seed in keep-out {shape}: on surface, {b.R.TileCount} tiles, none in the box ({inside}), {covered} of {ring} around covered");
+        }
+
+        // Size4_Tank_04-like: r 2.500..2.520 weld ripple over 15 m, 160 rings
+        var prof = new (float y, float r)[161];
+        for (int i = 0; i <= 160; i++) prof[i] = (-7.5f + 15f * i / 160, 2.51f + 0.01f * Mathf.Sin(i * 1.7f));
+        SurfaceIndex tank = Index(Lathe(prof, 160), 0.1f);
+        foreach (TileShape shape in new[] { TileShape.Hex, TileShape.Square })
+            foreach (float angle in new[] { 0f, 17f })
+            {
+                float Spread(bool locked, out Run b)
+                {
+                    var set = new TileSettings { Shape = shape, TileSize = 0.1f, AngleDeg = angle, Thickness = 0.025f, Width = 30, Height = 30,
+                                                 MaxWrapDeg = 100, TankAxis = Vector3.up, SmoothAxisLock = locked };
+                    b = Build(tank, set, new Vector3(2.51f, 0, 0), Vector3.right, Vector3.up);
+                    // edge direction of every full tile against the local axis tangent, folded to the pattern symmetry
+                    float sym = shape == TileShape.Hex ? 60 : 90, lo = float.MaxValue, hi = float.MinValue;
+                    foreach (TileOutline t in b.Full)
+                    {
+                        if (Mathf.Abs(t.Center.y) < 5f || t.Outline.Length < 3) continue; // the far ends, 5..7.5 m from the decal
+                        Vector3 e = t.Outline[1] - t.Outline[0], ax = Vector3.up - t.N * t.N.y;
+                        float deg = Mathf.Atan2(Vector3.Dot(Vector3.Cross(ax.normalized, e.normalized), t.N), Vector3.Dot(ax.normalized, e.normalized)) * Mathf.Rad2Deg;
+                        deg = ((deg % sym) + sym) % sym;
+                        lo = Math.Min(lo, deg); hi = Math.Max(hi, deg);
+                    }
+                    return hi - lo > sym / 2 ? sym - (hi - lo) : hi - lo; // wrap-around of the fold; ~1.6 deg is local tilt on the 12 deg ripple flanks
+                }
+                float free = Spread(false, out _), lockedSpread = Spread(true, out Run lb);
+                int bare = 0, pts = 0;
+                for (float y = -7f; y <= 7f; y += 0.25f)
+                    for (float ang = -1.2f; ang <= 1.2f; ang += 0.1f)
+                    {
+                        Vector3 d = new Vector3(Mathf.Cos(ang), 0, Mathf.Sin(ang));
+                        pts++;
+                        if (!CoveredAt(lb, d * 2.51f + Vector3.up * y, d)) bare++;
+                    }
+                Check(lockedSpread < 3f && (free < 3f || lockedSpread < free / 5) && bare <= pts / 100 && ValidMesh(lb),
+                    $"v1.9.1 axis lock {shape} @{angle}: frame spread at the far ends {lockedSpread:F2} deg (free transport {free:F2}), {bare} of {pts} points bare");
+            }
     }
 
     static void SmoothHullChecks()

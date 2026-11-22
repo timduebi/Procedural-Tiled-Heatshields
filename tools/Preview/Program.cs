@@ -287,9 +287,11 @@ static class Program
                     // 1.9 as the module: every stack node, occupied or not (flat stack faces, docking faces never tiled), except
                     // nodes joined to another target
                     var joined = new HashSet<string>();
+                    var used = new HashSet<string>();
                     foreach (string attn in tp.Node.All("attN"))
                     {
                         string[] f2 = attn.Split(',');
+                        used.Add(f2[0]);
                         string idPart = f2[1].Split('|')[0], otherId = idPart.Substring(0, idPart.LastIndexOf('_'));
                         if (targets.Any(t => t.Id == otherId)) joined.Add(f2[0]);
                     }
@@ -300,6 +302,8 @@ static class Program
                         if (nd.Length < 6) continue;
                         Vector3 nPos = new Vector3(nd[0], nd[1], nd[2]);
                         Vector3 nDir = new Vector3(nd[3], nd[4], nd[5]).normalized;
+                        string nodeId = nkv.Key.Substring("node_stack_".Length);
+                        if (!used.Contains(nodeId) && !TileBuilder.FreeNodeCuts(nodeId, nDir)) continue; // 1.9.1 as the module
                         if (Vector3.Dot(nDir, nPos) < 0 && !overrides.ContainsKey("rawNodes"))
                         {
                             nDir = -nDir;
@@ -602,7 +606,7 @@ static class Program
             SurfaceIndex.SmoothHullResult smooth = smoothMode == "1" || smoothMode == "auto"
                 ? SurfaceIndex.BuildSmoothHull(pos.ToArray(), tri.ToArray(), owner.ToArray(), 0, s.TankAxis, s.TankCenter, smoothMode == "1")
                 : null;
-            if (smooth != null) { pos = smooth.Pos.ToList(); tri = smooth.Tri.ToList(); owner = smooth.Owner.ToList(); s.FillHull = str("on", "fill") != "off"; } // 1.9 as the module: dark joint bed
+            if (smooth != null) { pos = smooth.Pos.ToList(); tri = smooth.Tri.ToList(); owner = smooth.Owner.ToList(); s.SmoothAxisLock = true; s.FillHull = str("on", "fill") != "off"; } // 1.9 as the module: dark joint bed
             if (smoothMode != "0") Console.WriteLine($"  smooth hull ({smoothMode}): {(smooth != null ? $"on, {smooth.Radius.Length} rings, r {smooth.Radius.Min():F3}..{smooth.Radius.Max():F3} m, {smooth.ProtrusionTri.Length / 3} protrusion tris" : "off (not round / too small)")}");
             var surface = new SurfaceIndex(pos.ToArray(), tri.ToArray(), Vector3.zero, reach, Mathf.Max(s.TileSize * 0.5f, 0.05f), Mathf.Clamp(s.TileSize * 0.4f, 0.02f, 0.3f), owner.ToArray());
             long indexMs = watch.ElapsedMilliseconds;

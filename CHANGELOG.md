@@ -2,6 +2,13 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.9.1 (2026-11-22)
+
+- **FreeIva Compatibility (`mk3CrewCabin` & `Large_Crewed_Lab`):** Unattached stack nodes now only generate stack cut planes when they are true axial end nodes (`|dir.y| > 0.7`, excluding `*airlock*`/`*hatch*` nodes via `TileBuilder.FreeNodeCuts`). Fixes FreeIva's radial hatch nodes (`node_stack_front`/`back`, `node_stack_airlockL`/`R`) slicing off both faces and the door of `mk3CrewCabin` and breaking `Large_Crewed_Lab` into a flat preview. Also added a `Reseed()` fallback when a decal attaches directly on top of a window/hatch keep-out.
+- **Long 5 m Tank Axis Lock (`Size4_Tank_04`):** Added `SmoothAxisLock` so tiles on long smooth-cylinder tanks align strictly to the part's axis without tangent-frame drift across 15 m weld ripples (eliminating diagonal collision artifacts at non-zero pattern angles).
+- **PAW Cleanup:** Completely removed all UI attributes and handlers from `areaLimited`, `width`, `height`, `unrolled`, and `straightBorder` (kept as plain persistent fields for legacy saves), and updated `cockpitShape_off` from `"Width and height"` to `"Whole part"`.
+- **Capsule & Cockpit Refinements:** Removed `keepRcs = true` from `mk1-3pod` (RCS nozzles now tiled cleanly with no holes). Removed the bespoke `mk2Cockpit_Inline` cover and deepened its `WindowKeepOuts.cfg` panes so all 4 canopy windows stay clear under normal tiling.
+
 ## 1.9.0 (2026-11-22)
 
 - **One-Click "Tile whole belly" in Editor Window (`DecalWindow`):** Added belly direction selector (`Auto`, `-Y`, `+Z`, `-Z`, `+X`, `-X`) and **Tile whole belly** button that automatically attaches decals to every uncovered belly-facing fuselage, tank, bay, cockpit, and capsule on the vessel (applying the active pattern, finish, and tile size with single-step Ctrl+Z undo).

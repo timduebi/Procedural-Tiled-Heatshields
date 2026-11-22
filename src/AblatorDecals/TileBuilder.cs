@@ -57,6 +57,7 @@ namespace AblatorDecals
         public bool GearSkin;             // gear triangles were visibility-tested in the retracted pose
         public bool LimitedTank;
         public Vector3 TankAxis, TankCenter; // in decal space, for the side-wall joint bed
+        public bool SmoothAxisLock;       // 1.9.1 smooth hull: the walker frame keeps its seed angle to TankAxis (no transport drift)
         public bool FillHull;             // close gaps on continuous whole-part hulls and cockpit masks
         public bool Skin;                 // overlay (gear, intakes, fins, flaps, shielded port base): no tiles but one closed shell, the visible skin lifted by
                                           // the thickness, the tile pattern projected onto it (joints only in the texture; see RunSkin)
@@ -228,6 +229,8 @@ namespace AblatorDecals
         private bool[] wrapIn;                          // per hull triangle: within Max wrap (SurfaceIndex.WrapMask)
         private bool InWrap(SurfaceHit h) => wrapIn[h.Triangle];
         private Vector4[] cuts;
+        private bool axisLock;                          // S.SmoothAxisLock with a usable axis, see Lock
+        private float axisAngle;                        // seed frame u against the tank axis in the tangent plane
         // Unrolled footprint (measured along the hull). Cockpit cover and "whole part" pass 2 x the farthest hull point as "no
         // limit", but around a wide part (Mk3: belly, side, top) the way along the hull is longer: up to pi / 2 times that for
         // convex parts (half a perimeter <= pi / 2 x diameter), so there the footprint is stretched by pi / 2.
@@ -326,13 +329,51 @@ namespace AblatorDecals
                     if (Vector3.Dot(new Vector3(cuts[i].x, cuts[i].y, cuts[i].z), h0.P) + cuts[i].w > 0) cuts[i] = -cuts[i];
             }
             if (S.Skin) return RunSkin(result, outlines);
+            // 1.9.1: decal right on a window or hatch (Large_Crewed_Lab: all four sides at mid height): start from the nearest hull
+            // point outside every keep-out instead of giving up
+            if (InKeepOut(h0.P))
+            {
+                if (!Reseed(h0.Owner, out SurfaceHit hs)) { result.OnSurface = false; return result; }
+                Vector3 us = Tangent(decalU, hs.N);
+                if (us == Vector3.zero) { result.OnSurface = false; return result; }
+                h0 = hs; u0 = us;
+            }
 
             startBody = h0.Owner;
+            if (S.SmoothAxisLock && S.TankAxis.sqrMagnitude > 0.5f)
+            {
+                Vector3 a0 = AxisTangent(h0.N);
+                if (a0 != Vector3.zero)
+                {
+                    axisAngle = Mathf.Atan2(Vector3.Dot(Vector3.Cross(a0, u0), h0.N), Vector3.Dot(a0, u0));
+                    axisLock = true;
+                }
+            }
             List<SurfaceIndex.ShellTri> shell = CapShell();
             Flood(new Walker { P = h0.P, N = h0.N, U = u0, F = h0.FaceN }, 0, 0);
             FloodMissedBodies();
             if ((S.Regions != null && S.Regions.Length > 0) || (!S.LimitedTank && !HasClip && !S.Overlay && S.TankAxis.sqrMagnitude > 0.5f)) FloodIslands(); // 1.8: whole part needs the axis (no stack caps)
             return Finish(result, outlines, shell);
+        }
+
+        // nearest hull point to the decal origin on a face within Max wrap, inside the clip/cut planes and outside every keep-out;
+        // the decal's own body wins over others within 2 tiles. ponytail: linear scan of all faces, runs only for a blocked seed.
+        private bool Reseed(int preferOwner, out SurfaceHit hit)
+        {
+            hit = default;
+            float best = float.MaxValue;
+            Vector3 bestP = default, bestN = default;
+            for (int k = 0; k < wrapIn.Length; k++)
+            {
+                if (!wrapIn[k] || !surface.Triangle(k, out Vector3 a, out Vector3 b, out Vector3 c, out Vector3 fn, out int o)) continue;
+                if (Vector3.Dot(fn, decalN) < cosWrap) continue;
+                Vector3 p = SurfaceIndex.ClosestPointOnTriangle(origin, a, b, c, out _, out _, out _);
+                if (InKeepOut(p) || !InClip(p, 0)) p = (a + b + c) / 3; // the keep-out edge: one step into the face
+                if (InKeepOut(p) || !InClip(p, 0) || !Inside(p, 0)) continue;
+                float d = (p - origin).magnitude + (o == preferOwner ? 0 : 2 * s);
+                if (d < best) { best = d; bestP = p; bestN = fn; }
+            }
+            return best < float.MaxValue && surface.Closest(bestP, Mathf.Max(0.01f, 0.1f * s), bestN, 0.9f, out hit);
         }
 
         private TileResult Finish(TileResult result, List<TileOutline> outlines, List<SurfaceIndex.ShellTri> shell)
@@ -564,6 +605,7 @@ namespace AblatorDecals
         {
             var visited = new HashSet<long> { LatticeKey(a0, b0) };
             var queue = new Queue<Tile>();
+            start.U = Lock(start.U, start.N);
             Tile first = AddTile(a0, b0, start, start.P, false);
             if (first == null) return;
             if (first.Floods) queue.Enqueue(first);
@@ -718,7 +760,7 @@ namespace AblatorDecals
                     Vector2 d2 = pat.Position(sa, sb) - pat.Position(near.A, near.B);
                     Vector3 c3 = near.C + near.U * d2.x + near.V * d2.y;
                     if (!surface.Raycast(c3 + near.N * (0.5f * s), -near.N, 1.5f * s, 0.17f, out SurfaceHit hs) || hs.Owner != body || Vector3.Dot(hs.FaceN, bn) < 0.9f || Taken(hs.P, hs.N) || Enclosed(hs.P, hs.FaceN)) continue;
-                    Vector3 u = Transport(near.U, near.N, hs.N);
+                    Vector3 u = Carry(near.U, near.N, hs.N);
                     if (u == Vector3.zero) u = Tangent(decalU, hs.N);
                     if (u == Vector3.zero) continue;
                     Flood(new Walker { P = hs.P, N = hs.N, U = u, F = hs.FaceN }, sa, sb);
@@ -788,6 +830,14 @@ namespace AblatorDecals
         {
             string n = (partName ?? "").ToLowerInvariant();
             return n.StartsWith("mk2") && !n.Contains("cockpit") && !n.Contains("cargobay") && !n.Contains("lander");
+        }
+
+        // 1.9.1: does a FREE stack node (nothing attached) get a cut plane? Only axial ones (part-space dir along Y: top, bottom,
+        // docking face). Radial or hatch/airlock nodes (FreeIva adds those) would slice a whole side off the part.
+        public static bool FreeNodeCuts(string nodeId, Vector3 partDir)
+        {
+            string id = (nodeId ?? "").ToLowerInvariant();
+            return !id.Contains("airlock") && !id.Contains("hatch") && Mathf.Abs(partDir.normalized.y) > 0.7f;
         }
 
         // 1.9: half size of a window keep-out box (WindowKeepOuts.cfg: centre, half size, part space). The thinnest axis is the
@@ -1594,7 +1644,7 @@ namespace AblatorDecals
             }
             if (!unfolded && !surface.Raycast(c + w.N * rise, -w.N, 2 * rise, 0.17f, out h)) return false;
             if (!InWrap(h) || Vector3.Dot(h.FaceN, w.F) < (unfolded ? 0.05f : cosFace) || regionBody >= 0 && h.Owner != regionBody) return false;
-            Vector3 u = Transport(w.U, w.N, h.N), fwd = Tangent(ahead, h.FaceN);
+            Vector3 u = Carry(w.U, w.N, h.N), fwd = Tangent(ahead, h.FaceN);
             if (u == Vector3.zero || fwd == Vector3.zero || !SameFace(h.P + fwd * (0.5f * s), h.FaceN)) return false;
             w.U = u;
             w.P = c = h.P;
@@ -1745,7 +1795,7 @@ namespace AblatorDecals
                 Vector3 slip = h.P - guess;
                 slip -= w.N * Vector3.Dot(slip, w.N);
                 if (slip.magnitude > len * 0.2f + 0.006f) return false;
-                Vector3 nu = Transport(w.U, w.N, h.N);
+                Vector3 nu = Carry(w.U, w.N, h.N);
                 if (nu == Vector3.zero) return false;
                 w.N4 = w.N3; w.D4 = w.D3 > 0 ? w.D3 + len : 0;
                 w.N3 = w.N2; w.D3 = w.D2 > 0 ? w.D2 + len : 0;
@@ -1769,6 +1819,25 @@ namespace AblatorDecals
             if (c < -0.9f) return Tangent(u, n2);
             return Tangent(u - (n1 + n2) * (Vector3.Dot(u, n2) / (1 + c)), n2);
         }
+
+        // 1.9.1: over ~150 steps along a 15 m smooth tank (weld ripples r 2.500..2.520) transport drift skewed the flood fronts
+        // into diagonal scars; with the lock the frame is rebuilt from the tank axis at every step. Faces nearly square to the
+        // axis (caps) keep plain transport.
+        private Vector3 AxisTangent(Vector3 n)
+        {
+            Vector3 a = S.TankAxis.normalized;
+            a -= n * Vector3.Dot(a, n);
+            return a.sqrMagnitude < 0.09f ? Vector3.zero : a.normalized;
+        }
+
+        private Vector3 Lock(Vector3 u, Vector3 n)
+        {
+            if (!axisLock || u == Vector3.zero) return u;
+            Vector3 a = AxisTangent(n);
+            return a == Vector3.zero ? u : a * Mathf.Cos(axisAngle) + Vector3.Cross(n, a) * Mathf.Sin(axisAngle);
+        }
+
+        private Vector3 Carry(Vector3 u, Vector3 n1, Vector3 n2) => Lock(Transport(u, n1, n2), n2);
 
         private bool TooBent(Vector3 n, Vector3 before, float distance) =>
             distance > 0 && before != Vector3.zero &&

@@ -95,18 +95,12 @@ namespace AblatorDecals
 
         // "Whole part" (default): the decal tiles its part as far as max wrap allows, no width/height. "Limit area": width/height.
         // Saves from before 1.3 load as limited (OnLoad).
-        [KSPField(isPersistant = true, guiActiveEditor = false, guiName = L + "areaLimited", groupName = GrpArea, groupDisplayName = GrpAreaName)]
-        [UI_Toggle(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, enabledText = L + "areaLimited_on", disabledText = L + "areaLimited_off")]
-        public bool areaLimited;
+        [KSPField(isPersistant = true)] public bool areaLimited;
 
         // Width/Height: measured along the hull (unrolled) or seen from straight ahead (projected).
-        [KSPField(isPersistant = true, guiActiveEditor = false, guiName = L + "width", groupName = GrpArea, groupDisplayName = GrpAreaName)]
-        [UI_FloatEdit(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, minValue = 0.2f, maxValue = 60f, incrementLarge = 1f, incrementSmall = 0.1f, incrementSlide = 0.01f, sigFigs = 2, unit = " m")]
-        public float width = 2f;
+        [KSPField(isPersistant = true)] public float width = 2f;
 
-        [KSPField(isPersistant = true, guiActiveEditor = false, guiName = L + "height", groupName = GrpArea, groupDisplayName = GrpAreaName)]
-        [UI_FloatEdit(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, minValue = 0.2f, maxValue = 60f, incrementLarge = 1f, incrementSmall = 0.1f, incrementSlide = 0.01f, sigFigs = 2, unit = " m")]
-        public float height = 2f;
+        [KSPField(isPersistant = true)] public float height = 2f;
 
         // max angle between the hull and the projection direction
         [KSPField(isPersistant = true, guiActiveEditor = true, guiName = L + "maxWrap", groupName = GrpArea, groupDisplayName = GrpAreaName)]
@@ -119,16 +113,12 @@ namespace AblatorDecals
         [UI_FloatRange(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, minValue = 1f, maxValue = 100f, stepIncrement = 1f)]
         public float coverHeight = 100f;
 
-        [KSPField(isPersistant = true, guiActiveEditor = false, guiName = L + "unrolled", groupName = GrpArea, groupDisplayName = GrpAreaName)]
-        [UI_Toggle(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, enabledText = L + "unrolled_on", disabledText = L + "unrolled_off")]
-        public bool unrolled = true;
+        [KSPField(isPersistant = true)] public bool unrolled = true;
 
         // 1.4: "Across parts" is gone; kept only so old saves load, ignored (TargetParts)
         [KSPField(isPersistant = true)] public bool spanParts;
 
-        [KSPField(isPersistant = true, guiActiveEditor = false, guiName = L + "border", groupName = GrpArea, groupDisplayName = GrpAreaName)]
-        [UI_Toggle(scene = UI_Scene.Editor, affectSymCounterparts = UI_Scene.None, enabledText = L + "border_straight", disabledText = L + "border_whole")]
-        public bool straightBorder;
+        [KSPField(isPersistant = true)] public bool straightBorder;
 
         // only shown on a cockpit listed in CockpitCover.cfg: cover cut along its planes, whole part, max wrap 180
         [KSPField(isPersistant = true, guiActiveEditor = false, guiName = L + "cockpitShape", groupName = GrpArea, groupDisplayName = GrpAreaName)]
@@ -496,12 +486,11 @@ namespace AblatorDecals
 
             if (HighLogic.LoadedSceneIsEditor)
             {
-                foreach (string f in new[] { nameof(tileSize), nameof(patternAngle), nameof(tileGap), nameof(width), nameof(height), nameof(thickness),
-                             nameof(maxWrap), nameof(coverHeight), nameof(unrolled), nameof(straightBorder), nameof(cockpitShape), nameof(tileLoss), nameof(textureAcross), nameof(textureScale),
+                foreach (string f in new[] { nameof(tileSize), nameof(patternAngle), nameof(tileGap), nameof(thickness),
+                             nameof(maxWrap), nameof(coverHeight), nameof(cockpitShape), nameof(tileLoss), nameof(textureAcross), nameof(textureScale),
                              nameof(keepHatches), nameof(keepWindows), nameof(smoothHull) })
                     Fields[f].uiControlEditor.onFieldChanged = OnTweak;
                 Fields[nameof(pattern)].uiControlEditor.onFieldChanged = OnPatternChanged;
-                Fields[nameof(areaLimited)].uiControlEditor.onFieldChanged = OnAreaModeChanged;
                 Fields[nameof(finishUi)].uiControlEditor.onFieldChanged = OnFinishChanged;
                 Fields[nameof(weathering)].uiControlEditor.onFieldChanged = OnWeatheringChanged; // tint only, no rebuild
                 Fields[nameof(tileShedding)].uiControlEditor.onFieldChanged = (f, o) => CopyToCounterparts();
@@ -1099,6 +1088,9 @@ namespace AblatorDecals
                         if (node.nodeType != AttachNode.NodeType.Stack || node.attachedPart != null && parts.Contains(node.attachedPart)) continue;
                         Vector3 dir = node.orientation.normalized;
                         if (dir.sqrMagnitude < 0.5f) continue;
+                        // 1.9.1: a free node only cuts when axial (top/bottom/docking); FreeIva adds free radial hatch nodes
+                        // (mk3CrewCabin front/back, Large_Crewed_Lab airlockL/R) that would slice whole sides off
+                        if (node.attachedPart == null && !TileBuilder.FreeNodeCuts(node.id, dir)) continue;
                         // G5: Mk2/Mk3 cargo bays & service bays have inward payload nodes (top2/bottom2) recessed 20-100 mm
                         // inside the outer bulkhead. Flip inward nodes outward AND push the cut plane to the outermost stack
                         // node in that direction so stacked cargo bays never get a 40 mm seam gap.
@@ -1172,6 +1164,7 @@ namespace AblatorDecals
                 if (cover == null && settings.CutPlanes != null) os.CutPlanes = (doorObj ? settings.CutPlanes : heightCut is Vector4 hc0 ? new[] { hc0 } : new Vector4[0]).Select(c => ToDecal(c, toObj)).ToArray();
                 return os;
             }).ToArray();
+            settings.SmoothAxisLock = smoothHull && cover == null; // 1.9.1: no frame drift along long smooth tanks
             // 1.8: shed tiles must disappear on cockpits too, so a damaged cover is built instead of the pre-made one
             TileResult premade = cover != null && surface != null && battleLoss <= 0f ? PremadeCover(part.parent, Shape) : null;
             return new BuildJob
@@ -2718,14 +2711,6 @@ namespace AblatorDecals
         private void OnPatternChanged(BaseField field, object oldValue)
         {
             SyncSettings(); // texture for the new shape; a saved Brick drops out of the list once left
-            rebuildPending = true;
-            CopyToCounterparts();
-            MonoUtilities.RefreshPartContextWindow(part);
-        }
-
-        private void OnAreaModeChanged(BaseField field, object oldValue)
-        {
-            SyncSettings(); // width/height rows
             rebuildPending = true;
             CopyToCounterparts();
             MonoUtilities.RefreshPartContextWindow(part);

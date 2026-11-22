@@ -2,6 +2,13 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.9.1 (2026-11-22)
+
+- **FreeIva-Kompatibilität (`mk3CrewCabin` & `Large_Crewed_Lab`):** Unverbundene Stack-Knoten erzeugen nur noch an echten axialen Stirnseiten Schnittebenen (`|dir.y| > 0.7`, ohne `*airlock*`/`*hatch*` über `TileBuilder.FreeNodeCuts`). Behebt, dass FreeIva-Luken-Knoten (`node_stack_front`/`back`, `node_stack_airlockL`/`R`) beim `mk3CrewCabin` beide Seiten und die Tür abschnitten und das Mobile Labor (`Large_Crewed_Lab`) als flache Vorschau zerstörten. Zusätzlich greift `Reseed()`, falls ein Decal direkt auf einem Fenster- oder Luken-Ausschnitt platziert wird.
+- **Achsen-Fixierung für lange 5 m-Tanks (`Size4_Tank_04`):** `SmoothAxisLock` richtet Kacheln auf langen glatten Zylindern exakt an der Tankachse aus und verhindert Winkel-Drift über 15 m Länge (keine schrägen Kachel-Artefakte mehr).
+- **PAW bereinigt:** Alle `[UI_*]`-Steuerelemente für `areaLimited`, `width`, `height`, `unrolled` und `straightBorder` vollständig entfernt (Felder bleiben rein persistent für alte Spielstände), und `cockpitShape_off` von „Breite und Höhe“ auf „Ganzes Teil“ geändert.
+- **Kapsel- & Cockpit-Anpassungen:** `keepRcs = true` bei der Mk1-3-Kapsel (`mk1-3pod`) entfernt (RCS-Düsen jetzt sauber geschlossen, keine Löcher mehr). Eigenes Cover-Modell für das lineare Mk2-Cockpit (`mk2Cockpit_Inline`) entfernt und dessen Fensterboxen in `WindowKeepOuts.cfg` vertieft, damit alle 4 Scheiben bei normaler Kachelung sauber frei bleiben.
+
 ## 1.9.0 (2026-11-22)
 
 - **„Ganze Unterseite bekacheln“ mit einem Klick (`DecalWindow`):** Neue Richtungsauswahl (`Auto`, `-Y`, `+Z`, `-Z`, `+X`, `-X`) und Knopf **Ganze Unterseite bekacheln** im Editor-Fenster. Bringt automatisch Decals an allen noch unbedeckten Rumpf-, Tank-, Bucht-, Cockpit- und Kapselteilen an, übernimmt Muster/Kachelart/Größe und legt einen einzelnen Strg+Z-Rückgängig-Schritt an.
