@@ -43,6 +43,7 @@ static class Program
     static int Main(string[] args)
     {
         if (args[0] == "--mask") return MaskMode(args);
+        if (args[0] == "--streaks") return StreakPreview(args[1]); // --streaks <outDir>: 1.10 reentry streak textures, left over the tile texture, right raw
         if (args[0] == "--scan-windows") return ScanWindows(args[1], args[2]); // --scan-windows <gameData> <outFile>: ABLATORDECAL_WINDOWS boxes
         if (args[0] == "--mudump") // --mudump <.mu>: meshes (path, bounds, shader) and animation clips (moved transforms), debug
         {
@@ -259,8 +260,8 @@ static class Program
             s.LimitedTank = !whole && !cover;
             s.TankAxis = decal.Xform.InverseApplyDir(decal.Parent.Xform.ApplyDir(Vector3.up)).normalized;
             s.TankCenter = decal.Xform.InverseApply(decal.Parent.Xform.Pos);
-            // 1.8: keepHatches=0|1 (default 0 on the Mk3 crew cabin with whole=1, as the module), smoothHull=0|1|auto (default 0)
-            string kh = str(whole && Norm(decal.Parent.Name).Equals("mk3CrewCabin", StringComparison.OrdinalIgnoreCase) ? "0" : "1", "keepHatches").Trim().ToLowerInvariant();
+            // 1.8: keepHatches=0|1 (default 0 on the Mk3 crew cabin and, 1.10, the Mobile Lab with whole=1, as the module), smoothHull=0|1|auto (default 0)
+            string kh = str(whole && (Norm(decal.Parent.Name).Equals("mk3CrewCabin", StringComparison.OrdinalIgnoreCase) || Norm(decal.Parent.Name).Equals("Large.Crewed.Lab", StringComparison.OrdinalIgnoreCase)) ? "0" : "1", "keepHatches").Trim().ToLowerInvariant();
             bool keepHatches = kh == "1" || kh == "true";
             // 1.9: keepWindows=0|1 (default 1 on all parts, as the module), boxes from windows=<cfg> or the repo's WindowKeepOuts.cfg
             string kw = str("1", "keepWindows").Trim().ToLowerInvariant();
@@ -608,6 +609,8 @@ static class Program
                 : null;
             if (smooth != null) { pos = smooth.Pos.ToList(); tri = smooth.Tri.ToList(); owner = smooth.Owner.ToList(); s.SmoothAxisLock = true; s.FillHull = str("on", "fill") != "off"; } // 1.9 as the module: dark joint bed
             if (smoothMode != "0") Console.WriteLine($"  smooth hull ({smoothMode}): {(smooth != null ? $"on, {smooth.Radius.Length} rings, r {smooth.Radius.Min():F3}..{smooth.Radius.Max():F3} m, {smooth.ProtrusionTri.Length / 3} protrusion tris" : "off (not round / too small)")}");
+            if (smooth != null && overrides.ContainsKey("hullprof")) // hullprof=1: envelope radius per ring (debug)
+                Console.WriteLine("  profile " + string.Join(" ", smooth.SliceY.Select((y, i) => $"{y:F2}:{smooth.Radius[i]:F3}")));
             var surface = new SurfaceIndex(pos.ToArray(), tri.ToArray(), Vector3.zero, reach, Mathf.Max(s.TileSize * 0.5f, 0.05f), Mathf.Clamp(s.TileSize * 0.4f, 0.02f, 0.3f), owner.ToArray());
             long indexMs = watch.ElapsedMilliseconds;
             var outlines = new List<TileOutline>();
@@ -2077,6 +2080,43 @@ static class Program
                     .FirstOrDefault(n => n.Name == "PART" && n.Get("name") == part.Get("name")) ?? part;
             partConfigs[Norm(part.Get("name"))] = (part, dir);
         }
+    }
+
+    // 1.10: each streak style at full char (material alpha = its strength, as ModuleAblativeDecal.ApplyChar at amt 1) over
+    // its tile texture (2 x 2), and the raw texture on a flat background
+    static int StreakPreview(string outDir)
+    {
+        Directory.CreateDirectory(outDir);
+        string tex = Path.Combine(Directory.GetCurrentDirectory(), "GameData", "AblatorDecals", "Textures");
+        foreach (var (style, file, under, strength, bg) in new[] {
+            (StreakStyle.HexBlack, "streaks-hex-black.png", "HexBlack.png", 0.55f, System.Drawing.Color.FromArgb(26, 26, 28)),
+            (StreakStyle.SquareBlack, "streaks-square-black.png", "SquareBlack.png", 0.48f, System.Drawing.Color.FromArgb(26, 26, 28)),
+            (StreakStyle.Soot, "streaks-soot.png", "HexWhite.png", 0.55f, System.Drawing.Color.FromArgb(232, 232, 232)) })
+        {
+            const int n = 512;
+            byte[] px = CharStreaks.Generate(style, n, 1);
+            using (var src = new Bitmap(Path.Combine(tex, under)))
+            using (var outBmp = new Bitmap(3 * n, 2 * n))
+            {
+                using (var gfx = System.Drawing.Graphics.FromImage(outBmp))
+                {
+                    gfx.Clear(bg);
+                    for (int k = 0; k < 4; k++) gfx.DrawImage(src, new Rectangle((k % 2) * n, (k / 2) * n, n, n));
+                }
+                for (int y = 0; y < 2 * n; y++)
+                    for (int x = 0; x < 3 * n; x++)
+                    {
+                        bool raw = x >= 2 * n;
+                        int o = 4 * ((n - 1 - y % n) * n + x % n); // rows bottom to top
+                        float a = px[o + 3] / 255f * (raw ? 1f : strength);
+                        System.Drawing.Color c = outBmp.GetPixel(x, y);
+                        outBmp.SetPixel(x, y, System.Drawing.Color.FromArgb((int)(c.R + (px[o] - c.R) * a), (int)(c.G + (px[o + 1] - c.G) * a), (int)(c.B + (px[o + 2] - c.B) * a)));
+                    }
+                outBmp.Save(Path.Combine(outDir, file), ImageFormat.Png);
+            }
+            Console.WriteLine($"  {file}");
+        }
+        return 0;
     }
 
     static string Norm(string partName) => partName.Replace('_', '.').Trim();

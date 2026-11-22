@@ -125,6 +125,8 @@ namespace AblatorDecals
             GlowSet = new Color[bins];
             for (int i = 0; i < bins; i++) SetBinGlow(i, Dark);
             JointSet = Color.black;
+            streakDirty = true; // 1.10: the streak overlay follows the new tiles on its next EnsureStreaks
+            streakAlpha = new float[bins];
         }
 
         // editor: exact (non-convex) collider on the tile mesh for clicks and surface attach; off (removed) on gear hosts
@@ -245,6 +247,135 @@ namespace AblatorDecals
             hasEmissiveTex = false;
         }
 
+        // ---------- 1.10 reentry streaks ----------
+        // A child object with the tile tops (lifted 1.2 mm along the normals) and the streak texture, UVs projected in vessel
+        // root space along the reentry flow, so streaks run unbroken across module seams. One material per glow bin (alpha =
+        // that bin's char). Made on the first non-zero char, kept (only refilled) on rebuilds so no part caches a dead renderer.
+        private GameObject streakGo;
+        private MeshRenderer streakRenderer;
+        private Mesh streakMesh;
+        private Material[] streakMats = new Material[0];
+        private float[] streakAlpha = new float[0];
+        private bool streakDirty = true;
+        private Vector3[] streakRootPos = new Vector3[0], streakRootN = new Vector3[0]; // per streak vertex, vessel root space
+        private Vector3 streakFlow;
+        private Texture streakTex;
+        private const float StreakLift = 0.0012f, StreakU = 1.8f, StreakV = 3.2f;
+
+        public void SetStreakAlpha(int bin, float a)
+        {
+            if (bin >= 0 && bin < streakAlpha.Length) streakAlpha[bin] = a;
+        }
+
+        // root: vessel root transform; flow: reentry airflow in root space (unit). Call after SetStreakAlpha for all bins.
+        public void EnsureStreaks(Texture tex, Shader shader, Transform root, Vector3 flow)
+        {
+            if (Go == null || Mesh == null || root == null || tex == null || shader == null || BinCount == 0) return;
+            bool any = false;
+            foreach (float a in streakAlpha) if (a > 0.001f) { any = true; break; }
+            if (streakGo == null)
+            {
+                if (!any) return;
+                streakGo = new GameObject("AblativeDecalStreaks") { layer = Go.layer };
+                streakGo.transform.SetParent(Go.transform, false);
+                streakGo.AddComponent<MeshFilter>().sharedMesh = streakMesh = new Mesh { name = "AblativeDecalStreaks" };
+                streakRenderer = streakGo.AddComponent<MeshRenderer>();
+                streakRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                streakRenderer.receiveShadows = true;
+                streakDirty = true;
+                Part holder = Go.GetComponentInParent<Part>();
+                if (holder != null) ResetRendererCaches(holder);
+            }
+            streakGo.layer = Go.layer;
+            if (streakDirty || streakMats.Length != BinCount || streakTex != tex || (streakMats.Length > 0 && streakMats[0].shader != shader))
+                BuildStreaks(tex, shader, root, flow);
+            else if (Vector3.Angle(streakFlow, flow) > 10f) ProjectStreaks(flow);
+            for (int b = 0; b < streakMats.Length; b++)
+            {
+                float a = b < streakAlpha.Length ? streakAlpha[b] : 0;
+                if (Mathf.Abs(streakMats[b].color.a - a) > 0.002f) streakMats[b].color = new Color(1, 1, 1, a);
+            }
+            Material[] now = streakRenderer.sharedMaterials;
+            bool ours = now.Length == streakMats.Length;
+            for (int i = 0; ours && i < now.Length; i++) ours = now[i] == streakMats[i];
+            if (!ours) streakRenderer.sharedMaterials = streakMats; // KSP's highlighter may have instanced them
+            streakRenderer.enabled = any;
+        }
+
+        private void BuildStreaks(Texture tex, Shader shader, Transform root, Vector3 flow)
+        {
+            streakDirty = false;
+            streakTex = tex;
+            Vector3[] hv = Mesh.vertices, hn = Mesh.normals;
+            Matrix4x4 toRoot = root.worldToLocalMatrix * Go.transform.localToWorldMatrix;
+            var pos = new List<Vector3>();
+            var nrm = new List<Vector3>();
+            var rootPos = new List<Vector3>();
+            var rootN = new List<Vector3>();
+            var subs = new int[BinCount][];
+            for (int b = 0; b < BinCount; b++)
+            {
+                int[] tris = Mesh.GetTriangles(b);
+                var outTris = new List<int>(tris.Length);
+                Vector3 binN = BinNormals != null && b < BinNormals.Length ? BinNormals[b] : Vector3.zero;
+                for (int t = 0; t + 2 < tris.Length; t += 3)
+                {
+                    Vector3 a = hv[tris[t]], c1 = hv[tris[t + 1]], c2 = hv[tris[t + 2]];
+                    Vector3 fn = Vector3.Cross(c1 - a, c2 - a);
+                    if (fn.sqrMagnitude < 1e-14f) continue;
+                    // tile tops only: walls and bevels turn away from the bin's direction (decal space)
+                    if (binN != Vector3.zero && Vector3.Dot(hostToDecal.MultiplyVector(fn).normalized, binN) < 0.6f) continue;
+                    Vector3 rn = toRoot.MultiplyVector(fn).normalized;
+                    for (int k = 0; k < 3; k++)
+                    {
+                        int vi = tris[t + k];
+                        Vector3 p = hv[vi] + hn[vi] * StreakLift;
+                        outTris.Add(pos.Count);
+                        pos.Add(p);
+                        nrm.Add(hn[vi]);
+                        rootPos.Add(toRoot.MultiplyPoint3x4(p));
+                        rootN.Add(rn); // per face: one projection axis per triangle
+                    }
+                }
+                subs[b] = outTris.ToArray();
+            }
+            streakRootPos = rootPos.ToArray();
+            streakRootN = rootN.ToArray();
+            streakMesh.Clear();
+            streakMesh.indexFormat = pos.Count > 65000 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+            streakMesh.SetVertices(pos);
+            streakMesh.SetNormals(nrm);
+            streakMesh.subMeshCount = BinCount;
+            for (int b = 0; b < BinCount; b++) streakMesh.SetTriangles(subs[b], b);
+            ProjectStreaks(flow);
+            streakMesh.RecalculateBounds();
+
+            if (streakMats.Length != BinCount || (streakMats.Length > 0 && streakMats[0].shader != shader))
+            {
+                foreach (Material m in streakMats) if (m != null) Object.Destroy(m);
+                streakMats = new Material[BinCount];
+                for (int b = 0; b < BinCount; b++) streakMats[b] = new Material(shader) { name = "AblativeDecalStreaks" + b, renderQueue = 3001, color = new Color(1, 1, 1, 0) };
+            }
+            foreach (Material m in streakMats) m.mainTexture = tex;
+            streakRenderer.sharedMaterials = streakMats;
+        }
+
+        // u across the flow (on the axis perpendicular to the flow that lies most in the face), v along it, in metres / tile size
+        private void ProjectStreaks(Vector3 flow)
+        {
+            streakFlow = flow;
+            Vector3 right = Vector3.Cross(flow, Mathf.Abs(flow.y) < 0.9f ? Vector3.up : Vector3.forward).normalized;
+            Vector3 third = Vector3.Cross(right, flow);
+            var uv = new Vector2[streakRootPos.Length];
+            for (int i = 0; i < uv.Length; i++)
+            {
+                Vector3 p = streakRootPos[i], n = streakRootN[i];
+                Vector3 across = Mathf.Abs(Vector3.Dot(n, third)) >= Mathf.Abs(Vector3.Dot(n, right)) ? right : third;
+                uv[i] = new Vector2(Vector3.Dot(p, across) / StreakU, Vector3.Dot(p, flow) / StreakV);
+            }
+            streakMesh.uv = uv;
+        }
+
         // KSP caches a part's renderers: the model caches, Part.HighlightRenderer (Part.SetOpacity calls SetPropertyBlock on
         // every entry without a null check) and the Highlighter. Call after renderers under the part's model came or went;
         // everything is rebuilt from the live hierarchy, so no destroyed renderer can stay in a list.
@@ -262,6 +393,11 @@ namespace AblatorDecals
         public void Destroy()
         {
             DestroyMaterials();
+            foreach (Material m in streakMats) if (m != null) Object.Destroy(m);
+            streakMats = new Material[0];
+            if (streakMesh != null) Object.Destroy(streakMesh);
+            streakMesh = null;
+            streakRenderer = null; // its GameObject is a child of Go and goes with it
             if (Mesh != null) Object.Destroy(Mesh);
             if (Go != null)
             {

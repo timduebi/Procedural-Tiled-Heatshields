@@ -7,7 +7,7 @@ using KSP.Localization;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
-[assembly: KSPAssembly("AblatorDecals", 1, 9)]
+[assembly: KSPAssembly("AblatorDecals", 1, 10)]
 
 namespace AblatorDecals
 {
@@ -182,6 +182,10 @@ namespace AblatorDecals
         // share of tiles shed in flight (on top of tileLoss), reset by an Engineer's EVA repair
         [KSPField(isPersistant = true)] public float battleLoss = 0f;
 
+        // 1.10: heat-weighted reentry airflow in vessel root space (length = weight), so streaks keep their direction after a
+        // reload; all decals of a vessel add up to one flow (VesselChar)
+        [KSPField(isPersistant = true)] public Vector3 charFlowDir = Vector3.zero;
+
         // 1.8: flight readout: nominal / marginal / low / depleted
         [KSPField(guiActive = true, guiName = L + "thermalStatus")]
         public string thermalStatus = "";
@@ -253,6 +257,7 @@ namespace AblatorDecals
             if (ablator != null) ablator.amount = ablator.maxAmount;
             binExposure.Clear();
             maxExposure = 0f;
+            charFlowDir = Vector3.zero;
             lowWarned = depletedWarned = false;
             BuildNow(); // fresh hosts; Apply re-applies the base weathering char
             ScreenMessages.PostScreenMessage(Localizer.Format(L + "eva_repaired"), 4f, ScreenMessageStyle.UPPER_CENTER);
@@ -646,7 +651,12 @@ namespace AblatorDecals
             if (ablator != null && ablator.maxAmount > 0)
             {
                 float used = 1 - (float)(ablator.amount / ablator.maxAmount);
-                if (Mathf.Abs(used - appliedChar) >= 0.003f) ApplyChar(used); // 1.9: small steps, char builds up smoothly
+                // 1.9: small steps, char builds up smoothly; 1.10: also when other shields of the vessel char (unified level) or the
+                // flow turns (streaks re-projected by TileHost past 10 deg)
+                VesselChar vc = CharField();
+                float uni = vc != null ? 0.8f * vc.Used + 0.2f * used : used;
+                if (Mathf.Abs(used - appliedChar) >= 0.003f || Mathf.Abs(uni - appliedUnified) >= 0.003f ||
+                    (vc != null && Vector3.Angle(vc.Flow, appliedFlow) > 10f)) ApplyChar(used);
             }
 
             if (diagnoseAt > 0 && Time.time >= diagnoseAt)
@@ -744,30 +754,138 @@ namespace AblatorDecals
         }
 
         // white -> char colour with base weathering plus the used share of the ablator; 1.8: per bin, windward bins (most heat
-        // taken while facing the flow) char darker than leeward ones. 1.9 (all game modes): finish-aware colour (black ceramic
-        // scorches to a chalky ash brown, white/steel/ceramic soot to charcoal brown), a boosted curve so a normal Kerbin reentry
-        // (6-15 % ablator) shows clear directional char, and the specular fades to matte with it (TileHost)
+        // taken while facing the flow) char darker than leeward ones. 1.9 (all game modes): finish-aware colour, a boosted curve
+        // so a normal Kerbin reentry (6-15 % ablator) shows clear directional char, and the specular fades to matte with it.
+        // 1.10: one char level for the whole vessel (80 % the vessel's area-weighted ablator use, 20 % this decal's) with a gentle
+        // nose-to-tail gradient along the flow, so neighbouring shields match across their seams; black tiles only dust towards
+        // warm ash (the streaks carry the look), white/steel/ceramic soot to charcoal; plus wind-aligned streaks (TileHost)
         private void ApplyChar(float used)
         {
             appliedChar = used;
-            Color charCol = string.Equals(Finish, "Black", StringComparison.OrdinalIgnoreCase) ? new Color(1.95f, 1.72f, 1.52f) : new Color(0.22f, 0.19f, 0.16f);
+            VesselChar vc = CharField();
+            float uni = vc != null ? 0.8f * vc.Used + 0.2f * used : used;
+            appliedUnified = uni;
+            Transform root = RootTransform();
+            Vector3 flow = vc != null ? vc.Flow : DefaultFlow;
+            appliedFlow = flow;
+            bool black = string.Equals(Finish, "Black", StringComparison.OrdinalIgnoreCase);
+            Color charCol = black ? new Color(1.45f, 1.38f, 1.32f) : new Color(0.32f, 0.29f, 0.26f);
+            float colScale = black ? 0.65f : 1f;
+            StreakStyle style = !black ? StreakStyle.Soot : Shape == TileShape.Square ? StreakStyle.SquareBlack : StreakStyle.HexBlack;
+            float strength = style == StreakStyle.SquareBlack ? 0.48f : 0.55f;
+            Texture2D streakTex = StreakTexture(style);
             float baseWeath = Mathf.Clamp01(weathering / 100f);
             foreach (TileHost h in hosts)
             {
                 if (!h.Alive) continue;
-                if (maxExposure <= 0f || !binExposure.TryGetValue(h, out float[] exp))
+                float grad = 1f;
+                if (vc != null && root != null && vc.AxMax > vc.AxMin + 0.05f)
                 {
-                    float amt = Mathf.Clamp01(baseWeath + Mathf.Pow(Mathf.Clamp01(used * 3.0f), 0.65f));
-                    h.SetChar(Color.Lerp(Color.white, charCol, amt), amt);
-                    continue;
+                    float ax = Vector3.Dot(root.InverseTransformPoint(h.Renderer.bounds.center), flow);
+                    grad = 1.12f - 0.24f * Mathf.Clamp01((ax - vc.AxMin) / (vc.AxMax - vc.AxMin)); // nose (upstream) a bit darker
                 }
-                for (int b = 0; b < h.BinCount && b < exp.Length; b++)
+                float[] exp = null;
+                bool directional = maxExposure > 0f && binExposure.TryGetValue(h, out exp);
+                for (int b = 0; b < h.BinCount; b++)
                 {
-                    float dirFactor = 0.35f + 1.15f * exp[b] / maxExposure;
-                    float amt = Mathf.Clamp01(baseWeath + Mathf.Pow(Mathf.Clamp01(used * 3.0f * dirFactor), 0.65f));
-                    h.SetBinChar(b, Color.Lerp(Color.white, charCol, amt), amt);
+                    float dirFactor = directional && b < exp.Length ? 0.35f + 1.15f * exp[b] / maxExposure : 1f;
+                    float amt = Mathf.Clamp01(baseWeath + Mathf.Pow(Mathf.Clamp01(uni * grad * 2.8f * dirFactor), 0.65f));
+                    h.SetBinChar(b, Color.Lerp(Color.white, charCol, amt * colScale), amt);
+                    h.SetStreakAlpha(b, Mathf.Clamp01(amt * strength));
                 }
+                h.EnsureStreaks(streakTex, StreakShader(), root, flow);
             }
+        }
+
+        // ---------- 1.10 vessel-wide char and streaks ----------
+
+        private float appliedUnified = -1;
+        private Vector3 appliedFlow = DefaultFlow;
+        // the craft's longitudinal aft direction in root space: air runs nose to tail (VAB and SPH, the root's up is the nose)
+        private static readonly Vector3 DefaultFlow = Vector3.down;
+
+        private sealed class VesselChar
+        {
+            public int Frame = -1;
+            public float Used;                        // area-weighted ablator use of all decals on the vessel
+            public Vector3 Flow = DefaultFlow;        // root space, unit
+            public float AxMin, AxMax;                // extent of the tile hosts along Flow (root space)
+        }
+
+        // ponytail: weak table keyed by the Vessel (gone with it, nothing to clear on unload), as GlowFields
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Vessel, VesselChar> CharFields =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<Vessel, VesselChar>();
+
+        // flight only (null in the editor: the decal's own char, default flow); refreshed once per frame for the whole vessel
+        private VesselChar CharField()
+        {
+            if (!HighLogic.LoadedSceneIsFlight || vessel == null) return null;
+            VesselChar f = CharFields.GetOrCreateValue(vessel);
+            if (f.Frame == Time.frameCount) return f;
+            f.Frame = Time.frameCount;
+            double area = 0, sum = 0;
+            Vector3 flow = Vector3.zero;
+            foreach (ModuleAblativeDecal d in VesselDecals())
+            {
+                if (d == null || d.vessel != vessel) continue;
+                flow += d.charFlowDir;
+                if (d.coveredArea <= 0 || d.ablator == null || d.ablator.maxAmount <= 0) continue;
+                area += d.coveredArea;
+                sum += d.coveredArea * (1 - d.ablator.amount / d.ablator.maxAmount);
+            }
+            f.Used = area > 0 ? (float)(sum / area) : 0f;
+            f.Flow = flow.sqrMagnitude > 1e-12f ? flow.normalized : DefaultFlow;
+            Transform root = RootTransform();
+            f.AxMin = float.MaxValue; f.AxMax = float.MinValue;
+            if (root != null)
+                foreach (ModuleAblativeDecal d in VesselDecals())
+                {
+                    if (d == null || d.vessel != vessel) continue;
+                    foreach (TileHost h in d.hosts)
+                    {
+                        if (!h.Alive) continue;
+                        float ax = Vector3.Dot(root.InverseTransformPoint(h.Renderer.bounds.center), f.Flow);
+                        f.AxMin = Mathf.Min(f.AxMin, ax); f.AxMax = Mathf.Max(f.AxMax, ax);
+                    }
+                }
+            if (f.AxMax < f.AxMin) f.AxMin = f.AxMax = 0;
+            return f;
+        }
+
+        private Transform RootTransform()
+        {
+            if (HighLogic.LoadedSceneIsFlight) return vessel != null && vessel.rootPart != null ? vessel.rootPart.partTransform : null;
+            Part root = HighLogic.LoadedSceneIsEditor ? EditorLogic.RootPart : null;
+            return root != null ? root.partTransform : part.partTransform;
+        }
+
+        private static readonly Texture2D[] StreakTextures = new Texture2D[3];
+        private static Shader streakShader;
+
+        // generated once per style (CharStreaks), 512 px, mip-mapped, repeating; then no longer readable (GPU copy only)
+        private static Texture2D StreakTexture(StreakStyle style)
+        {
+            int i = (int)style;
+            if (StreakTextures[i] != null) return StreakTextures[i];
+            const int n = 512;
+            var t = new Texture2D(n, n, TextureFormat.RGBA32, true) { name = "AblativeDecalStreaks" + style, wrapMode = TextureWrapMode.Repeat, anisoLevel = 4 };
+            t.LoadRawTextureData(CharStreaks.Generate(style, n, 1));
+            t.Apply(true, true);
+            return StreakTextures[i] = t;
+        }
+
+        // KSP/Alpha/Translucent; Unity's transparent diffuse when that is missing or has no tint colour
+        private static Shader StreakShader()
+        {
+            if (streakShader != null) return streakShader;
+            Shader s = Shader.Find("KSP/Alpha/Translucent");
+            if (s != null)
+            {
+                var probe = new Material(s);
+                if (!probe.HasProperty("_Color") || !probe.HasProperty("_MainTex")) s = null;
+                Destroy(probe);
+            }
+            return streakShader = s != null ? s : Shader.Find("Legacy Shaders/Transparent/Diffuse");
         }
 
         private void OnWeatheringChanged(BaseField field, object oldValue)
@@ -787,6 +905,9 @@ namespace AblatorDecals
         private void TrackExposure(Vector3 vWorld, double heat)
         {
             float add = (float)(heat * TimeWarp.fixedDeltaTime);
+            // 1.10: the airflow (opposite the motion) in root space, weighted by the heat taken, for the streak direction
+            Transform root = RootTransform();
+            if (root != null && vWorld != Vector3.zero) charFlowDir += root.InverseTransformDirection(-vWorld) * add;
             foreach (TileHost h in hosts)
             {
                 if (!h.Alive || h.BinCount == 0) continue;
@@ -2071,9 +2192,6 @@ namespace AblatorDecals
         // DESIGN-v11: control surfaces (also fins such as tailfin, R8winglet; ModuleAeroSurface derives from it) and intakes, each an
         // overlay object; plain wings and strakes (ModuleLiftingSurface only) need a decal of their own. A part with a decal of its
         // own is that decal's (not tiled twice, no "area taken" between the two)
-        // 1.9 (DecalWindow "tile whole belly"): a part a decal on its parent already tiles as an object
-        internal static bool IsAutoCoveredChild(Part c) => c != null && (Glued(c) || ShieldedPort(c));
-
         private static bool Glued(Part c) => c.attachMode == AttachModes.SRF_ATTACH &&
             (c.FindModuleImplementing<ModuleControlSurface>() != null || c.FindModuleImplementing<ModuleResourceIntake>() != null) &&
             !c.children.Any(k => k != null && k.FindModuleImplementing<ModuleAblativeDecal>() != null);
@@ -2687,15 +2805,16 @@ namespace AblatorDecals
             CopyToCounterparts();
         }
 
-        // 1.9: per-parent defaults when attached: hatches and windows stay free, except on the Mk3 crew cabin (belly hatch and
-        // windows tiled over). On another parent type (alt-copy, moved decal) they and the smooth hull are set afresh; the
+        // 1.9: per-parent defaults when attached: hatches and windows stay free, except on the Mk3 crew cabin and (1.10) the
+        // Mobile Lab (hatches tiled over). On another parent type (alt-copy, moved decal) they and the smooth hull are set afresh; the
         // player's toggles persist while the parent type stays.
         private void InitParentDefaults()
         {
             if (part.parent == null || detached) return;
             string parentName = part.parent.partInfo != null ? part.parent.partInfo.name : "";
             if (string.IsNullOrEmpty(initParent) && keepHatchesInit) initParent = parentName; // pre-1.9 save: keep the player's choices
-            bool isMk3Cabin = Same(parentName, "mk3CrewCabin");
+            // 1.10: the Mobile Lab's belly hatch is tiled over too (its side windows stay free)
+            bool isMk3Cabin = Same(parentName, "mk3CrewCabin") || Same(parentName, "Large_Crewed_Lab") || Same(parentName, "Large.Crewed.Lab");
             if (!Same(initParent, parentName))
             {
                 initParent = parentName;

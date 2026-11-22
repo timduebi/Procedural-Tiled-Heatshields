@@ -2,6 +2,17 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.10.0 (2026-11-22)
+
+- **Einseitige Kapsel-Cover (`CockpitCover.cfg`):** Alle konischen, runden und Cupola-Kapsel-Cover bedecken jetzt nur noch eine Seite (die Unter-/Hitzeschildseite, kein 360°-Umlauf mehr unten), inkl. abgestufter Kontur beim `mk1-3pod`, die exakt hinter dem Seitenfenster gerade bis zum unteren Rand läuft und die gegenüberliegende Hälfte komplett weiß lässt.
+- **Mobiles Labor (`Large_Crewed_Lab`) mit geschlossener Luke & geraden Enden (`crewCabin`, `Large_Crewed_Lab`):**
+  - `Large_Crewed_Lab` setzt `keepHatches` standardmäßig auf `Überkacheln` (und die zwei kleinen Lukenfenster sind aus `WindowKeepOuts.cfg` entfernt), sodass das Hitzeschild die Luke auf seiner Seite sauber bedeckt, während alle 6 großen Seitenfenster frei bleiben.
+  - `SurfaceIndex.ClampEndCollar` kappt ausgestellte Endflansche und überstehende Endring-Bumper an zylindrischen Kabinen (`crewCabin`, `Large_Crewed_Lab`), sodass beide Enden sauber gerade und bündig abschließen.
+- **Einheitliches schiffsweites Charring & Windstreifen (`CharStreaks.cs`, `TileHost.cs`):**
+  - Alle Hitzeschilde eines Schiffs teilen sich nun einen gemeinsamen schiffsweiten Verkohlungsgrad (`80 %` flächengewichteter Schiffsdurchschnitt + `20 %` lokal + dezenter `±12 %`-Verlauf von Nase zu Heck) für saubere Übergänge zwischen benachbarten Modulen.
+  - Neues prozedurales, kachelbares `512×512`-Streifen-Overlay (`AblativeDecalStreaks`, `KSP/Alpha/Translucent`), im Schiffs-Koordinatensystem entlang der gemittelten Wiedereintritts-Windrichtung (`charFlowDir`, persistent gespeichert) projiziert: dezente Starship-Streifen auf **Hex Schwarz**, dezente Shuttle-Rauchbänder auf **Quadrat Schwarz** und dunkle Rußstreifen auf **NASA-Weiß / Stahl / Keramik** — durchgehend über Modulnähte hinweg.
+- **Editor-Fenster aufgeräumt (`DecalWindow.cs`):** Experimentelle Funktion „Ganze Unterseite bekacheln“ entfernt und **Alle Hitzeschilde hervorheben** ganz nach oben ins Fenster verschoben.
+
 ## 1.9.1 (2026-11-22)
 
 - **FreeIva-Kompatibilität (`mk3CrewCabin` & `Large_Crewed_Lab`):** Unverbundene Stack-Knoten erzeugen nur noch an echten axialen Stirnseiten Schnittebenen (`|dir.y| > 0.7`, ohne `*airlock*`/`*hatch*` über `TileBuilder.FreeNodeCuts`). Behebt, dass FreeIva-Luken-Knoten (`node_stack_front`/`back`, `node_stack_airlockL`/`R`) beim `mk3CrewCabin` beide Seiten und die Tür abschnitten und das Mobile Labor (`Large_Crewed_Lab`) als flache Vorschau zerstörten. Zusätzlich greift `Reseed()`, falls ein Decal direkt auf einem Fenster- oder Luken-Ausschnitt platziert wird.

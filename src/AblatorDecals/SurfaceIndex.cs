@@ -415,6 +415,9 @@ namespace AblatorDecals
                 while (b < ny && !populated[b]) b++;
                 rawR[i] = a < 0 ? rawR[b] : b >= ny ? rawR[a] : Mathf.Lerp(rawR[a], rawR[b], (float)(i - a) / (b - a));
             }
+            // 1.10: end flanges / bumper rings (ReStock crewCabin, Large_Crewed_Lab: 1.25 m wall, 1.32 m rings in the outer ~10 cm)
+            // would flare the envelope like a trumpet: in the outer 15 cm collar the radius follows the wall's trend from just inside
+            bool clampLo = ClampEndCollar(rawR, sliceY, yMin, yMax, ny, true), clampHi = ClampEndCollar(rawR, sliceY, yMin, yMax, ny, false);
             float maxR = 0;
             for (int i = 0; i < ny; i++) maxR = Math.Max(maxR, rawR[i]);
             if (maxR < 0.15f) return null;
@@ -502,6 +505,8 @@ namespace AblatorDecals
                 float ym = Y(m);
                 // 1.9: axial faces at the ends (stack caps, docking faces, end flanges) get neither hull nor protrusion skin
                 if (fa.sqrMagnitude > 1e-24f && Math.Abs(Vector3.Dot(fa.normalized, axis)) > 0.85f && (ym < yMin + 0.02f || ym > yMax - 0.02f)) continue;
+                // 1.10: the clamped end flange itself (bumper / handrail ring) gets no protrusion skin either
+                if ((clampLo && ym < yMin + EndCollar) || (clampHi && ym > yMax - EndCollar)) continue;
                 float ex = Math.Max(R(a) - Env(Y(a)), Math.Max(R(b) - Env(Y(b)), R(c) - Env(Y(c))));
                 if (ex > 0.015f && R(m) - Env(Y(m)) > 0.008f)
                 {
@@ -518,6 +523,39 @@ namespace AblatorDecals
                 ProtrusionPos = protPos.ToArray(), ProtrusionTri = protTri.ToArray(),
                 SliceY = ringY, Radius = envR
             };
+        }
+
+        private const float EndCollar = 0.15f;
+
+        // 1.10: clamps rawR in the outer EndCollar of one end to the wall's linear trend from two bands just inside it
+        // (0.14..0.245 and 0.245..0.35 m from the end) where it jumps out by more than 1.5 cm. Domes (radius falls) and
+        // cones (trend followed) stay as they are. True when something was clamped.
+        internal static bool ClampEndCollar(float[] rawR, float[] sliceY, float yMin, float yMax, int ny, bool lo)
+        {
+            if (yMax - yMin < 0.60f || ny < 8) return false;
+            float Dist(int i) => lo ? sliceY[i] - yMin : yMax - sliceY[i];
+            float Band(float d0, float d1, out float dc)
+            {
+                var v = new List<float>();
+                float ds = 0;
+                for (int i = 0; i < ny; i++) { float d = Dist(i); if (d >= d0 && d <= d1) { v.Add(rawR[i]); ds += d; } }
+                dc = v.Count > 0 ? ds / v.Count : 0;
+                if (v.Count == 0) return float.NaN;
+                v.Sort();
+                return v[v.Count / 2];
+            }
+            float r1 = Band(0.14f, 0.245f, out float d1), r2 = Band(0.245f, 0.35f, out float d2);
+            if (float.IsNaN(r1)) return false;
+            float slope = float.IsNaN(r2) || d2 - d1 < 1e-3f ? 0 : (r1 - r2) / (d2 - d1); // radius gain per metre towards the end
+            bool any = false;
+            for (int i = 0; i < ny; i++)
+            {
+                float d = Dist(i);
+                if (d >= EndCollar) continue;
+                float pred = r1 + slope * (d1 - d);
+                if (rawR[i] > pred + 0.015f) { rawR[i] = pred; any = true; }
+            }
+            return any;
         }
 
         // Smoothed normal for a hit made with smooth = false.

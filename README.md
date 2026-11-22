@@ -4,7 +4,7 @@ Language: **English** | [Deutsch](README.de.md)
 
 AblatorDecals is a mod for Kerbal Space Program 1.12.5. The **Ablative Heat Tiles** part (`ablativeDecal`) attaches to the surface of a part like a sticker and places thin 3D thermal protection tiles directly onto its hull. Surface-attached landing gear, air intakes, and control surfaces on that part can receive their own tile shells, and tiles on moving parts animate with them. Patterns mimic Starship (hexagons) or Space Shuttle (squares). Thermally, the decal acts as an ablative heat shield: during reentry it absorbs convection heat from the covered parts and consumes Ablator, all while remaining a single part.
 
-Version 1.9.1 has been verified offline with the full self-test suite and the preview renderer against Stock, Making History, ReStock, ReStockPlus, SSPX, and Near Future part models. See [CHANGELOG.md](CHANGELOG.md) for version history and [docs/CLAUDE-HANDOFF.md](docs/CLAUDE-HANDOFF.md) for development handoff notes.
+Version 1.10.0 has been verified offline with the full self-test suite and the preview renderer against Stock, Making History, ReStock, ReStockPlus, SSPX, and Near Future part models. See [CHANGELOG.md](CHANGELOG.md) for version history and [docs/CLAUDE-HANDOFF.md](docs/CLAUDE-HANDOFF.md) for development handoff notes.
 
 ## Installation
 
@@ -44,7 +44,7 @@ PAW layout (top to bottom):
 3. **Area**: Max wrap angle, Covered height, Hull surface (Smooth cylinder / Exact mesh), Cockpit shape (on supported cockpits, capsules, and landers).
 4. **Fine tuning** (collapsed): Texture and Texture scale (only with Plain ceramic), Missing tiles, Weathering, Reentry tile shedding, Keep hatches clear, Keep windows clear, Shuffle tiles.
 
-The Editor toolbar window (`DecalWindow`) also offers one-click **Presets**, **Highlight all heat shields**, and **Tile whole belly** (with belly direction selector and single-step Ctrl+Z undo).
+The Editor toolbar window (`DecalWindow`) puts **Highlight all heat shields** right at the top, followed by one-click **Presets** and craft-wide pattern/finish/size controls.
 
 | Group | Setting | Options / Range | Default | Effect |
 |---|---|---|---|---|

@@ -18,6 +18,7 @@ static class Program
     static int Main(string[] args)
     {
         if (args.Length > 0 && args[0] == "v17") { V162SkinChartCheck(); V17SquareCreaseCheck(); Console.WriteLine("SelfCheck v17 OK"); return 0; } // quick: 1.7 only
+        if (args.Length > 0 && args[0] == "v110") { V110Checks(); Console.WriteLine("SelfCheck v110 OK"); return 0; } // quick: 1.10 only
         if (args.Length > 0 && args[0] == "v191") { V191Checks(); Console.WriteLine("SelfCheck v191 OK"); return 0; } // quick: 1.9.1 only
         if (args.Length > 0 && args[0] == "v18") { SmoothHullChecks(); WholeIslandChecks(); Console.WriteLine("SelfCheck v18 OK"); return 0; } // quick: 1.8 only
         if (args.Length > 0 && args[0] == "v11") // quick: only the DESIGN-v11 checks
@@ -73,6 +74,7 @@ static class Program
         SmoothHullChecks();
         WholeIslandChecks();
         V191Checks();
+        V110Checks();
         PerformanceCheck();
         GlowChecks.Run();
         Console.WriteLine("SelfCheck OK");
@@ -1804,6 +1806,55 @@ static class Program
                 Check(lockedSpread < 3f && (free < 3f || lockedSpread < free / 5) && bare <= pts / 100 && ValidMesh(lb),
                     $"v1.9.1 axis lock {shape} @{angle}: frame spread at the far ends {lockedSpread:F2} deg (free transport {free:F2}), {bare} of {pts} points bare");
             }
+    }
+
+    // 1.10: end flanges (crewCabin / Large_Crewed_Lab bumper rings) no longer flare the smooth hull, while cones keep their
+    // taper; procedural reentry streaks tile seamlessly, run along V and stay moderate
+    static void V110Checks()
+    {
+        Mesh flanged = Lathe(new[] { (-1f, 1.32f), (-0.9f, 1.32f), (-0.9f, 1.25f), (0.9f, 1.25f), (0.9f, 1.32f), (1f, 1.32f) }, 64);
+        var fr = SurfaceIndex.BuildSmoothHull(flanged.V, flanged.T, null, 0, Vector3.up, Vector3.zero, false);
+        int endProt = 0;
+        if (fr != null)
+            for (int i = 0; i < fr.ProtrusionPos.Length; i++) if (Mathf.Abs(fr.ProtrusionPos[i].y) > 0.86f) endProt++;
+        Check(fr != null && fr.Radius.Max() < 1.26f && fr.Radius.Min() > 1.24f && endProt == 0,
+            $"v1.10 smooth hull: flanged ends stay a straight cylinder (r {fr?.Radius.Min():F3}..{fr?.Radius.Max():F3} m, {endProt} end protrusion corners)");
+        Mesh cone = Lathe(new[] { (-1f, 1.0f), (1f, 1.4f) }, 64);
+        var cr = SurfaceIndex.BuildSmoothHull(cone.V, cone.T, null, 0, Vector3.up, Vector3.zero, true);
+        Check(cr != null && cr.Radius.Max() > 1.39f && cr.Radius.Min() < 1.03f, $"v1.10 smooth hull: a cone keeps its taper to the ends (r {cr?.Radius.Min():F3}..{cr?.Radius.Max():F3} m)");
+
+        foreach (StreakStyle style in new[] { StreakStyle.HexBlack, StreakStyle.SquareBlack, StreakStyle.Soot })
+        {
+            const int n = 256;
+            byte[] px = CharStreaks.Generate(style, n, 1);
+            float A(int x, int y) => px[4 * (((y % n + n) % n) * n + ((x % n + n) % n)) + 3];
+            double du = 0, dv = 0, wrapU = 0, wrapV = 0, sum = 0, sum2 = 0, max = 0;
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float a = A(x, y);
+                    sum += a; sum2 += a * a; max = Math.Max(max, a);
+                    if (x < n - 1) du += Math.Abs(A(x + 1, y) - a); else wrapU += Math.Abs(A(0, y) - a);
+                    if (y < n - 1) dv += Math.Abs(A(x, y + 1) - a); else wrapV += Math.Abs(A(x, 0) - a);
+                }
+            du /= n * (n - 1); dv /= n * (n - 1); wrapU /= n; wrapV /= n;
+            double mean = sum / (n * n), sd = Math.Sqrt(Math.Max(0, sum2 / (n * n) - mean * mean));
+            float seam = 0;
+            for (int k = 0; k < 256; k++)
+            {
+                float t = k / 256f;
+                CharStreaks.Pixel(style, 0, t, 1, out _, out _, out _, out float a0);
+                CharStreaks.Pixel(style, 1, t, 1, out _, out _, out _, out float a1);
+                CharStreaks.Pixel(style, t, 0, 1, out _, out _, out _, out float b0);
+                CharStreaks.Pixel(style, t, 1, 1, out _, out _, out _, out float b1);
+                seam = Math.Max(seam, Math.Max(Math.Abs(a0 - a1), Math.Abs(b0 - b1)));
+            }
+            Check(seam < 1e-3f && wrapU <= 3 * du + 1 && wrapV <= 3 * dv + 1,
+                $"v1.10 streaks {style}: seamless (periodic to {seam:E1}; wrap step u {wrapU:F2} / v {wrapV:F2} vs inner {du:F2} / {dv:F2})");
+            Check(du > 2 * dv, $"v1.10 streaks {style}: run along V (mean |dA/du| {du:F2} > 2 x |dA/dv| {dv:F2})");
+            Check(max <= 0.70 * 255 && max >= 0.40 * 255 && sd >= 0.03 * 255 && mean >= 0.02 * 255 && mean <= 0.30 * 255,
+                $"v1.10 streaks {style}: moderate alpha (max {max / 255:F2}, mean {mean / 255:F2}, sd {sd / 255:F2})");
+        }
     }
 
     static void SmoothHullChecks()

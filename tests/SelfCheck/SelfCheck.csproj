@@ -17,6 +17,7 @@
     <Compile Include="..\..\src\AblatorDecals\TileBuilder.cs" />
     <Compile Include="..\..\src\AblatorDecals\CoverMesh.cs" />
     <Compile Include="..\..\src\AblatorDecals\TileGlow.cs" />
+    <Compile Include="..\..\src\AblatorDecals\CharStreaks.cs" />
   </ItemGroup>
 
 </Project>

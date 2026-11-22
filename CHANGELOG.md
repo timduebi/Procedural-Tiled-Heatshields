@@ -2,6 +2,17 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.10.0 (2026-11-22)
+
+- **One-Sided Capsule Covers (`CockpitCover.cfg`):** All conical, spherical, and cupola capsule covers now shield ONLY one side (the windward belly half, no 360° bottom wrap), including a stepped side-window contour on `mk1-3pod` that runs cleanly behind the side windows straight down to the bottom rim while keeping the entire opposite half bare and white.
+- **Mobile Lab (`Large_Crewed_Lab`) Hatch Covered & Straight Cylinder Ends (`crewCabin`, `Large_Crewed_Lab`):**
+  - `Large_Crewed_Lab` now defaults to `keepHatches = false` (and its two hatch portholes are removed from `WindowKeepOuts.cfg`), so the heatshield cleanly covers the hatch on the tiled side while keeping all 6 side windows free.
+  - Added `SurfaceIndex.ClampEndCollar` so outward end-flange flares and end-ring bumper protrusions on cylindrical cabins (`crewCabin`, `Large_Crewed_Lab`) stay flush and straight from top to bottom instead of flaring outward at the stack seams.
+- **Vessel-Wide Unified Charring & Wind-Aligned Reentry Streaks (`CharStreaks.cs`, `TileHost.cs`):**
+  - All heat shields on a vessel now share a unified vessel-wide char level (`80 %` area-weighted vessel mean + `20 %` local + subtle `±12 %` nose-to-tail gradient) for seamless transitions across adjacent modules.
+  - Added a procedural, seamless `512×512` directional streak overlay (`AblativeDecalStreaks`, `KSP/Alpha/Translucent`) projected in vessel root space along the heat-weighted reentry airflow direction (`charFlowDir`, persisted across saves): moderate Starship-style feathery silver-ash streaks on **Hex Black**, subtle Shuttle-style smoky silver-grey flow bands on **Square Black**, and dark charcoal soot streaks on **White / Steel / Ceramic** — flowing unbroken across module seams!
+- **Editor Window Cleanup (`DecalWindow.cs`):** Removed the experimental "Tile whole belly" feature and moved **Highlight all heat shields** to the very top of the Editor toolbar window.
+
 ## 1.9.1 (2026-11-22)
 
 - **FreeIva Compatibility (`mk3CrewCabin` & `Large_Crewed_Lab`):** Unattached stack nodes now only generate stack cut planes when they are true axial end nodes (`|dir.y| > 0.7`, excluding `*airlock*`/`*hatch*` nodes via `TileBuilder.FreeNodeCuts`). Fixes FreeIva's radial hatch nodes (`node_stack_front`/`back`, `node_stack_airlockL`/`R`) slicing off both faces and the door of `mk3CrewCabin` and breaking `Large_Crewed_Lab` into a flat preview. Also added a `Reseed()` fallback when a decal attaches directly on top of a window/hatch keep-out.
