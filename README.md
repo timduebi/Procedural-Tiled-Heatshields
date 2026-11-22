@@ -4,7 +4,7 @@ Language: **English** | [Deutsch](README.de.md)
 
 Procedural Tiled Heatshield (`AblatorDecals`) is a mod for Kerbal Space Program 1.12.5. The **Ablative Heat Tiles** part (`ablativeDecal`) attaches to the surface of a part like a sticker and places thin 3D thermal protection tiles directly onto its hull. Surface-attached landing gear, air intakes, and control surfaces on that part can receive their own tile shells, and tiles on moving parts animate with them. Patterns mimic Starship (hexagons) or Space Shuttle (squares). Thermally, the decal acts as an ablative heat shield: during reentry it absorbs convection heat from the covered parts and consumes Ablator, all while remaining a single part.
 
-Version 1.11.4 has been verified offline with the full self-test suite and the preview renderer against Stock, Making History, ReStock, ReStockPlus, SSPX, and Near Future part models. See [CHANGELOG.md](CHANGELOG.md) for version history and [docs/CLAUDE-HANDOFF.md](docs/CLAUDE-HANDOFF.md) for development handoff notes.
+Version 1.11.5 has been verified offline with the full self-test suite and the preview renderer against Stock, Making History, ReStock, ReStockPlus, SSPX, and Near Future part models. See [CHANGELOG.md](CHANGELOG.md) for version history and [docs/CLAUDE-HANDOFF.md](docs/CLAUDE-HANDOFF.md) for development handoff notes.
 
 ## Installation
 

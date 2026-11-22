@@ -826,9 +826,9 @@ namespace AblatorDecals
                 : ceramic ? (pbr ? new Color(0.90f, 0.83f, 0.77f) : new Color(1.75f, 1.62f, 1.50f))
                 : steel ? new Color(0.84f, 0.79f, 0.73f)
                 : new Color(0.28f, 0.25f, 0.22f);
-            float colScale = darkShield ? 0.64f : steel ? 0.54f : 0.80f;
+            float colScale = darkShield ? 0.75f : steel ? 0.62f : 0.88f;
             StreakStyle style = !darkShield ? StreakStyle.Soot : Shape == TileShape.Square ? StreakStyle.SquareBlack : StreakStyle.HexBlack;
-            float strength = style == StreakStyle.SquareBlack ? 0.76f : 0.82f;
+            float strength = style == StreakStyle.SquareBlack ? 0.90f : 0.96f;
             Texture2D streakTex = null;
             Shader streakSh = null;
             try
@@ -855,14 +855,16 @@ namespace AblatorDecals
                         if (wn != Vector3.zero)
                         {
                             float windward = Mathf.Clamp01(Vector3.Dot(root.InverseTransformDirection(wn).normalized, -flow));
-                            dirFactor = 0.55f + 0.55f * windward;
+                            // 1.11.5: belly flying at 30-40 deg AoA has windward ~0.55-0.65; Sqrt curve gives full ~1.14 exposure
+                            // without cutting spaceplane bellies in half while remaining 100 % continuous across part seams
+                            dirFactor = 0.65f + 0.65f * Mathf.Sqrt(windward);
                         }
                     }
-                    // 1.11.3: smooth delayed onset — stays clean during the first seconds of reentry (u < 0.006),
-                    // reaches ~0.50 after one Kerbin reentry (u ~ 0.06) and climbs to 1.0 across 2+ reentries (u >= 0.22)
+                    // 1.11.5: smooth delayed onset — clean during first seconds of reentry (u < 0.005), ~0.60 after one Kerbin
+                    // reentry (~40 % peak streak opacity, clearly visible even in shadow) and 1.0 across 2-3+ reentries
                     float u = uni * dirFactor;
-                    float onset = SmoothStep01(0.006f, 0.025f, u);
-                    float reentryAmt = onset * Mathf.Pow(Mathf.Clamp01((u - 0.004f) * 4.2f), 0.54f);
+                    float onset = SmoothStep01(0.005f, 0.020f, u);
+                    float reentryAmt = onset * Mathf.Pow(Mathf.Clamp01(u * 5.2f), 0.50f);
                     float amt = Mathf.Clamp01(baseWeath + reentryAmt);
                     h.SetBinChar(b, Color.Lerp(baseCol, charCol, amt * colScale), amt);
                     h.SetStreakAlpha(b, Mathf.Clamp01(amt * strength * glowMask));

@@ -2,6 +2,11 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.11.5 (2026-11-23)
+
+- **Sichtbarkeit der Reentry-Verwitterung wieder kräftig und ausgewogen (`ModuleAblativeDecal.cs`, `CharStreaks.cs`):**
+  - Behebt die unbeabsichtigte Mehrfach-Abschwächung aus v1.11.3/v1.11.4 (der lineare `windward`-Faktor halbierte Raumgleiter-Bäuche bei 35° Anstellwinkel zusätzlich zu den reduzierten Streifenwerten). Nutzt nun `0,65 + 0,65 * Sqrt(windward)` (weiterhin 100 % nahtlos über alle Flügel-/Rumpfnähte), kräftigere Streifen (`0,90 / 0,96`, `Pow(u * 5,2; 0,50)`) und behält sowohl den verzögerten Beginn als auch die Glüh-Ausblendung bei.
+
 ## 1.11.4 (2026-11-23)
 
 - **Hotfix: Reentry-Verkohlung & Windstreifen wieder sichtbar (`ModuleAblativeDecal.cs`):**

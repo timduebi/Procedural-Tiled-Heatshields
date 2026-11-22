@@ -2,6 +2,11 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.11.5 (2026-11-23)
+
+- **Restored Clear Post-Reentry Weathering Visibility (`ModuleAblativeDecal.cs`, `CharStreaks.cs`):**
+  - Fixed spaceplane belly attenuation where linear `0.55 + 0.55 * windward` cut 35° AoA bellies in half relative to v1.11.1 (`0.86` vs `1.50`), stacking with the streak alpha reductions to drop visibility to ~27 %. Now uses `0.65 + 0.65 * Sqrt(windward)` (continuous across seams, `~1.14` on a 35° AoA belly), restores crisp ash/soot streak contrast (`strength 0.90 / 0.96`, `Pow(u * 5.2, 0.50)`), and keeps both the delayed onset and glow-fade mask so streaks stay hidden during flames and emerge clearly and seamlessly after cool-down.
+
 ## 1.11.4 (2026-11-23)
 
 - **Hotfix: Reentry Charring & Streaks Restored (`ModuleAblativeDecal.cs`):**

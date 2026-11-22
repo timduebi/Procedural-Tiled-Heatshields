@@ -47,9 +47,9 @@ namespace AblatorDecals
                     float cluster = Streaks(uu, v, 10, 1, 0.90f, 0.65f, 0.50f, seed);
                     float crisp = Streaks(uu, v, 34, 1, 0.42f, 0.68f, 1.10f, seed + 1) * (0.30f + 0.70f * cluster);
                     float fil = Streaks(uu, v, 96, 2, 0.34f, 0.62f, 1.00f, seed + 2) * (0.20f + 0.80f * cluster);
-                    float veil = 0.22f * Smooth(0.45f, 0.90f, Noise(uu * 18, v * 1, 18, 1, seed + 3));
-                    a = 0.92f * Screen(0.74f * fan, crisp, 0.80f * fil, veil) * (0.45f + 0.55f * macro);
-                    r = Lerp(0.82f, 0.80f, tint); g = Lerp(0.84f, 0.72f, tint); b = Lerp(0.87f, 0.62f, tint); // silver -> warm tan
+                    float veil = 0.24f * Smooth(0.45f, 0.90f, Noise(uu * 18, v * 1, 18, 1, seed + 3));
+                    a = 1.00f * Screen(0.78f * fan, crisp, 0.84f * fil, veil) * (0.50f + 0.50f * macro);
+                    r = Lerp(0.88f, 0.85f, tint); g = Lerp(0.89f, 0.77f, tint); b = Lerp(0.92f, 0.67f, tint); // crisp silver -> warm tan
                     break;
                 }
                 case StreakStyle.SquareBlack:
@@ -58,8 +58,8 @@ namespace AblatorDecals
                     float band = Streaks(uu, v, 6, 1, 0.72f, 0.72f, 0.65f, seed);
                     float mid = Streaks(uu, v, 20, 1, 0.52f, 0.58f, 0.90f, seed + 1);
                     float wisp = Smooth(0.46f, 0.88f, Noise(uu * 24, v * 3, 24, 3, seed + 2));
-                    a = 0.85f * Screen(0.74f * band, 0.65f * mid, 0.34f * wisp, 0) * (0.45f + 0.55f * macro);
-                    r = Lerp(0.64f, 0.85f, tint); g = Lerp(0.64f, 0.86f, tint); b = Lerp(0.66f, 0.88f, tint); // ash grey -> pale silver
+                    a = 0.96f * Screen(0.78f * band, 0.70f * mid, 0.38f * wisp, 0) * (0.50f + 0.50f * macro);
+                    r = Lerp(0.70f, 0.90f, tint); g = Lerp(0.70f, 0.91f, tint); b = Lerp(0.72f, 0.93f, tint); // ash grey -> pale silver
                     break;
                 }
                 default:
@@ -69,8 +69,8 @@ namespace AblatorDecals
                     float crisp = Streaks(uu, v, 28, 1, 0.46f, 0.65f, 1.05f, seed + 1) * (0.30f + 0.70f * cluster);
                     float fil = Streaks(uu, v, 76, 2, 0.34f, 0.55f, 1.00f, seed + 2) * (0.20f + 0.80f * cluster);
                     float wisp = Smooth(0.48f, 0.90f, Noise(uu * 18, v * 3, 18, 3, seed + 3));
-                    a = 0.92f * Screen(0.68f * fan, 0.82f * crisp, 0.65f * fil, 0.28f * wisp) * (0.45f + 0.55f * macro);
-                    r = Lerp(0.08f, 0.13f, tint); g = Lerp(0.07f, 0.10f, tint); b = Lerp(0.06f, 0.08f, tint); // charcoal brown
+                    a = 1.00f * Screen(0.72f * fan, 0.86f * crisp, 0.70f * fil, 0.32f * wisp) * (0.50f + 0.50f * macro);
+                    r = Lerp(0.07f, 0.12f, tint); g = Lerp(0.06f, 0.09f, tint); b = Lerp(0.05f, 0.07f, tint); // charcoal brown
                     break;
                 }
             }
