@@ -205,27 +205,38 @@ GitHub & Download (MIT): https://github.com/timduebi/Procedural-Tiled-Heatshield
 ## 5. GitHub Release Notes (`v1.0`)
 
 ```markdown
-![Procedural Tiled Heatshield](https://raw.githubusercontent.com/timduebi/Procedural-Tiled-Heatshields/main/media/banner.jpg)
+![Procedural Tiled Heatshield](https://i.imgur.com/pILXv94.jpeg)
 
 # Procedural Tiled Heatshield v1.0 (KSP 1.12.x)
 
 First public community release of **Procedural Tiled Heatshield** (`AblatorDecals`). Adds one surface-attachable part (**Ablative Heat Tiles**) that procedurally wraps thin 3D Starship/Shuttle thermal protection tiles directly onto your hull.
 
-> **Work in Progress:** This is my very first KSP mod (started privately after Matt Lowne's decal heatshield video, built with AI assistance). Bugs and quirks can definitely happen — please report them via [GitHub Issues](https://github.com/timduebi/Procedural-Tiled-Heatshields/issues)! Designed mainly for **spaceplane parts** (Mk1/Mk2/Mk3, wings, bays, intakes, gear); works on other parts too, though visual artifacts can occur.
+> **Work in Progress:** This is my very first KSP mod (started privately after Matt Lowne's decal heatshield video, built with AI assistance). Bugs and quirks can definitely happen â€” please report them via [GitHub Issues](https://github.com/timduebi/Procedural-Tiled-Heatshields/issues) or on the [KSP Forum](https://forum.kerbalspaceprogram.com/topic/232194-112x-procedural-tiled-heatshield-v10-procedural-3d-thermal-protection-tiles-for-spaceplanes-more/)! Designed mainly for **spaceplane parts** (Mk1/Mk2/Mk3, wings, bays, intakes, gear); works on other parts too, though visual artifacts can occur.
 
 ### Key Features
-- **Real 3D Model & Functional Ablator (Not Just Visual):** Generates actual 3D tile geometry with real, working Ablator that absorbs reentry heat — not a flat cosmetic decal.
+- **Real 3D Model & Functional Ablator (Not Just Visual):** Generates actual 3D tile geometry with real, working Ablator that absorbs reentry heat â€” not a flat cosmetic decal.
 - **6 PBR Variants:** Hexagonal & Square tiles in Black, Plain Ceramic & Brushed Steel (`TU/Metallic`, `Resurfaced/Standard`, or Stock).
-- **Procedural Wrap:** Adjustable wrap angle, height, tile size & thickness — trims flush at seams, windows & hatches.
+- **Procedural Wrap:** Adjustable wrap angle, height, tile size & thickness â€” trims flush at seams, windows & hatches.
 - **Animated Parts:** Moves with cargo/service bay doors, elevons, winglets, landing gear & shielded docking ports; wraps air intakes cleanly.
 - **Reentry Glow, Weathering & Toolbar:** Multi-stage reentry glow, vessel-wide post-reentry weathering streaks, optional tile shedding & VAB toolbar.
 
+### Screenshots
+| | |
+|---|---|
+| ![VAB Editor](https://i.imgur.com/O217iXW.png) | ![Tiled Belly on the Runway](https://i.imgur.com/ROfJmLi.png) |
+| ![Shuttle Reentry](https://i.imgur.com/sxlANi5.jpeg) | ![Post-Reentry Weathering](https://i.imgur.com/dRQc4AI.jpeg) |
+
+More in the [Imgur album](https://imgur.com/a/ylGtNn5) and the [README](https://github.com/timduebi/Procedural-Tiled-Heatshields#readme).
+
 ### Installation
-1. Download `AblatorDecals-1.0.zip` below.
+1. Download `AblatorDecals-1.0.zip` below (or via [SpaceDock](https://spacedock.info/mod/4884/Procedural%20Tiled%20Heatshield)).
 2. Copy `GameData/AblatorDecals` into your KSP `GameData` directory.
 3. **No required dependencies** (KSP 1.12.x standalone; optional patches for B9PartSwitch, CTT, Deadly Reentry, FAR, VAB Organizer & TexturesUnlimited/Resurfaced).
 
-**License:** MIT — see [README.md](https://github.com/timduebi/Procedural-Tiled-Heatshields#readme) for screenshots & GIFs.
+### Links & License
+- **SpaceDock:** https://spacedock.info/mod/4884/Procedural%20Tiled%20Heatshield
+- **KSP Forum Thread:** https://forum.kerbalspaceprogram.com/topic/232194-112x-procedural-tiled-heatshield-v10-procedural-3d-thermal-protection-tiles-for-spaceplanes-more/
+- **License:** MIT â€” see [README.md](https://github.com/timduebi/Procedural-Tiled-Heatshields#readme) for screenshots & GIFs.
 ```
 
 ---
