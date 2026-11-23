@@ -16,8 +16,20 @@ Thermisch funktioniert das Decal wie ein echtes Ablator-Hitzeschild: Es fängt K
 
 ## In-Game Screenshots
 
+<p align="center">
+  <img src="media/ingame_09_vab_editor_ui.jpg" alt="VAB-Editor — Kachel-Fenster & Teilemenü" width="100%" />
+</p>
+
 | | |
 |---|---|
+| ![Alle Tankgrößen](media/ingame_06_tank_sizes_vab.jpg) | ![Delta-Flügel Unterseite](media/ingame_07_delta_wing_belly.jpg) |
+| ![Gekachelte Unterseite auf der Startbahn](media/ingame_08_belly_runway.jpg) | ![Verwitterung nach dem Wiedereintritt](media/ingame_10_weathered_orbit.jpg) |
+| ![Shuttle-Wiedereintritt](media/ingame_11_shuttle_reentry.jpg) | ![Volles Wiedereintritts-Glühen](media/ingame_12_reentry_glow_top.jpg) |
+| ![Verwittert nach dem Wiedereintritt](media/ingame_13_parachute_weathered.jpg) | ![Mk2 Spaceplane Wiedereintritt](media/ingame_03_reentry_plasma_horizon.jpg) |
+| ![Wiedereintritts-Glühen Nahaufnahme](media/ingame_04_reentry_glow_closeup.jpg) | ![Mk3 Shuttle im Orbit](media/ingame_05_shuttle_orbit_3quarter.jpg) |
+| ![Mk3 Shuttle Unterseite](media/ingame_01_shuttle_belly_orbit.jpg) | ![Mk2 Spaceplane über Kerbin](media/ingame_02_mk2_spaceplane_clouds.jpg) |
+
+---|---|
 | ![Mk2 Spaceplane Wiedereintritt](media/ingame_03_reentry_plasma_horizon.jpg) | ![Wiedereintritts-Glühen Nahaufnahme](media/ingame_04_reentry_glow_closeup.jpg) |
 | ![Mk3 Shuttle im Orbit](media/ingame_05_shuttle_orbit_3quarter.jpg) | ![Mk3 Shuttle Unterseite](media/ingame_01_shuttle_belly_orbit.jpg) |
 

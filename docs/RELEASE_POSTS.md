@@ -27,74 +27,63 @@
 [1.12.x] Procedural Tiled Heatshield v1.0 — Procedural 3D Thermal Protection Tiles for Spaceplanes & More
 ```
 
-**Post Body (all 19 images & GIFs hosted on Imgur album https://imgur.com/a/ylGtNn5):**
+**Post Body (images on Imgur album https://imgur.com/a/ylGtNn5; two images on one line = side by side):**
 ```markdown
-![Procedural Tiled Heatshield](https://i.imgur.com/4XrVocK.jpeg)
+![Procedural Tiled Heatshield](https://i.imgur.com/pILXv94.jpeg)
 
-# Procedural Tiled Heatshield
+**Procedural Tiled Heatshield (v1.0)** adds one surface-attachable part (**Ablative Heat Tiles**) for KSP 1.12.x that procedurally wraps thin 3D Starship/Shuttle heat tiles onto your hull.
 
-**Procedural Tiled Heatshield** adds a single surface-attachable part (**Ablative Heat Tiles**) that procedurally wraps thin, individual 3D thermal protection tiles directly onto your craft's hull — inspired by Starship hexagons and Space Shuttle squares.
-
-### About This Mod (Honest Disclaimer)
-I started this mod purely as a private personal project for my own KSP playthrough after getting inspired by **Matt Lowne's video** (*"This KSP Mod Lets You Build CUSTOM Heat Shields!"*) where he built custom heat shields out of decals. Once it started working really nicely in my own game, I thought I might as well share it with the community!
-
-A few transparent notes up front:
-- **Very much a Work in Progress:** Bugs and unexpected quirks can definitely happen! If you run into any issues, glitches, or weird part behavior, please **report them here in the thread or on [GitHub Issues](https://github.com/timduebi/Procedural-Tiled-Heatshields/issues)** (a screenshot or part name helps a ton).
-- **My very first mod:** I had zero KSP modding experience before starting this project.
-- **Built with AI assistance:** The code and tooling were created with heavy AI assistance — I tested, iterated, and tuned it hands-on in KSP.
-- **Built primarily for spaceplane parts:** It was designed and tested mainly around Mk1, Mk2, and Mk3 spaceplane parts (cockpits, fuselages, cargo bays, wings, elevons, intakes, and landing gear), where it works very well. You *can* place it on other parts (cylindrical tanks, service bays, adapters, capsules, etc.), too — just keep in mind that on non-spaceplane or unusual modded geometry, visual artifacts or unexpected quirks can definitely happen!
-
----
+### Good to Know
+- **Very much Work in Progress:** Bugs and glitches can definitely happen — please report them here or on [GitHub Issues](https://github.com/timduebi/Procedural-Tiled-Heatshields/issues)!
+- **First mod & AI-assisted:** Started privately for my own save after Matt Lowne's decal heatshield video (zero prior modding experience, built with AI assistance).
+- **Best on spaceplane parts:** Made primarily for Mk1/Mk2/Mk3 spaceplanes, wings, bays, intakes & gear. Works on other parts too, though visual artifacts can happen.
 
 ### Key Features
-- **Single-part procedural 3D tiles:** Attach like a decal — automatically conforms to the hull, trims flush at part seams, and keeps hatches and windows clear.
-- **6 PBR Tile Variants:** **Hexagonal** (Starship-style) and **Square** (Shuttle-style) patterns in **Black**, **Plain Ceramic**, and **Brushed Stainless Steel** — with full PBR metallic/roughness/normal support (`TU/Metallic`, `Resurfaced/Standard`, or Stock).
-- **Animated Parts Support:** Tiles ride cleanly on moving **control surfaces (elevons/winglets)**, **cargo bay & service bay doors**, **retractable landing gear**, and **shielded docking ports**, and wrap **surface-attached air intakes** while leaving intake openings clear.
-- **Functional Ablative Protection:** Absorbs windward convection heat, consumes Ablator scaled to tile area × thickness, and protects surface-attached parts resting on top of the tiles.
-- **Dynamic Reentry Glow & Cross-Flow Weathering:** Smooth multi-stage thermal glow across part seams plus seamless vessel-wide post-reentry weathering streaks (straight nose-to-tail on wings + Starship-style curved-hull cross-flow streaks wrapping around tank flanks, also previewable live in the VAB). Optional reentry tile shedding with Engineer EVA repair.
-- **Editor Toolbar Window:** Highlight all shields on your craft or apply pattern, finish, size, and thickness across the whole vessel in one click.
+- **Real 3D Model & Functional Ablator (Not Just Visual):** Generates actual 3D tile geometry with real, working Ablator that absorbs reentry heat — not a flat cosmetic decal.
+- **6 PBR Variants:** Hexagonal & Square tiles in Black, Plain Ceramic & Brushed Steel (TU/Resurfaced PBR or Stock).
+- **Procedural Hull Wrap:** Adjustable wrap angle, height, tile size & thickness — trims flush at seams, hatches & windows.
+- **Animated Parts:** Moves with cargo/service bay doors, elevons, winglets, landing gear & shielded docking ports; wraps air intakes cleanly.
+- **Reentry Glow, Weathering & Toolbar:** Multi-stage reentry glow, vessel-wide wind weathering streaks, optional tile shedding & VAB toolbar.
 
-### Feature Showcase (Spoiler)
+### In-Game Screenshots (Spoiler: "In-Game Screenshots (13)")
+![VAB Editor — Tile Window & Part Menu](https://i.imgur.com/O217iXW.png)
 
-![All 6 Tile Variants](https://i.imgur.com/GalFmYL.png)
-![Procedural Wrap & Height Control](https://i.imgur.com/vU5VeUN.gif)
-![Tile Weathering 0% to 100%](https://i.imgur.com/IvVaQpq.gif)
-![Animated Cargo & Service Bays](https://i.imgur.com/ehwgmnn.gif)
-![Animated Control Surfaces](https://i.imgur.com/POPH9xN.gif)
-![Landing Gear & Shielded Docking Port](https://i.imgur.com/ZW298PA.gif)
-![Reentry Thermal Glow](https://i.imgur.com/rSqyuV8.png)
-![Cockpit Covers](https://i.imgur.com/s4ahTa2.png)
-![Detail Cutouts & Seams](https://i.imgur.com/LaDsFM5.png)
-![Air Intakes on Wings & Mk2](https://i.imgur.com/vvnJdUi.png)
-![Mk3 Fuselage](https://i.imgur.com/YSO6YPh.png)
-![Mk2 Fuselage](https://i.imgur.com/Kw4YDk4.png)
-![Tank Sizes](https://i.imgur.com/S0t1Te8.png)
+![Every Tank Size](https://i.imgur.com/wHfT1Ts.png) ![Delta Wing Belly with Gear & Intake](https://i.imgur.com/ZqIqBMi.png)
 
----
+![Tiled Belly on the Runway](https://i.imgur.com/ROfJmLi.png) ![Post-Reentry Weathering in Orbit](https://i.imgur.com/dRQc4AI.jpeg)
 
-### Downloads & Links
+![Shuttle Reentry](https://i.imgur.com/sxlANi5.jpeg) ![Full Reentry Glow](https://i.imgur.com/W1beMu8.jpeg)
+
+![Weathered After Reentry](https://i.imgur.com/CQZBlWb.jpeg) ![Mk2 Spaceplane Over Kerbin](https://i.imgur.com/CwVUcOg.jpeg)
+
+![Mk2 Spaceplane — Fiery Reentry](https://i.imgur.com/qAtOWmm.jpeg) ![Reentry Glow Close-Up](https://i.imgur.com/7XIUgVM.jpeg)
+
+![Mk3 Shuttle — Tiled Belly](https://i.imgur.com/oIcqEdK.jpeg) ![Mk3 Shuttle in Orbit](https://i.imgur.com/f3CpWBC.jpeg)
+
+### Downloads, Installation & Dependencies
+- **GitHub Releases (v1.0):** https://github.com/timduebi/Procedural-Tiled-Heatshields/releases/tag/v1.0
 - **SpaceDock:** https://spacedock.info/mod/4884/Procedural%20Tiled%20Heatshield
-- **GitHub Releases:** https://github.com/timduebi/Procedural-Tiled-Heatshields/releases/tag/v1.0
-- **Imgur Album:** https://imgur.com/a/ylGtNn5
 - **Source Code:** https://github.com/timduebi/Procedural-Tiled-Heatshields
-- **KSP Forum:** https://forum.kerbalspaceprogram.com/topic/232194-112x-procedural-tiled-heatshield-v10-procedural-3d-thermal-protection-tiles-for-spaceplanes-more/
+- **Install:** Copy `GameData/AblatorDecals` into your KSP GameData folder.
+- **Dependencies:** None required (KSP 1.12.x standalone). Optional support for B9PartSwitch, CTT, Deadly Reentry, FAR, VAB Organizer & TexturesUnlimited/Resurfaced.
 
-### Installation & Dependencies
-1. Download the latest release ZIP and copy `GameData/AblatorDecals` into your KSP `GameData` folder.
-2. **Required dependencies:** None (works standalone on KSP **1.12.x**).
-3. **Optional integrations included:** B9PartSwitch, Community Tech Tree, Deadly Reentry, FAR, VAB Organizer, TexturesUnlimited / Resurfaced (PBR), plus support for Stock, Making History, ReStock/ReStockPlus, SSPX, and Near Future parts.
+### Feature Showcase (Spoiler: "Feature Showcase — 3D Renders & Animated GIFs (13)")
+![All 6 Tile Variants](https://i.imgur.com/GalFmYL.png) ![Procedural Wrap & Height (20° → 270°)](https://i.imgur.com/vU5VeUN.gif)
 
-### In-Game Screenshots (Spoiler)
-![Mk2 Spaceplane Fiery Reentry](https://i.imgur.com/qAtOWmm.jpeg)
-![Reentry Glow Close-Up](https://i.imgur.com/7XIUgVM.jpeg)
-![Mk3 Shuttle in Orbit](https://i.imgur.com/f3CpWBC.jpeg)
-![Mk3 Shuttle Tiled Belly](https://i.imgur.com/oIcqEdK.jpeg)
-![Mk2 Spaceplane Over Clouds](https://i.imgur.com/CwVUcOg.jpeg)
+![Reentry Weathering & Streaks (0% → 100%)](https://i.imgur.com/IvVaQpq.gif) ![Animated Cargo & Service Bays](https://i.imgur.com/ehwgmnn.gif)
+
+![Animated Control Surfaces (Elevons & Winglets)](https://i.imgur.com/POPH9xN.gif) ![Retractable Landing Gear & Shielded Docking Port](https://i.imgur.com/ZW298PA.gif)
+
+![Reentry Thermal Glow](https://i.imgur.com/rSqyuV8.png) ![Cockpit Covers (Mk1, Mk2, Mk3)](https://i.imgur.com/s4ahTa2.png)
+
+![Detail Cutouts, Windows & Seams](https://i.imgur.com/LaDsFM5.png) ![Air Intakes (Wing & Mk2)](https://i.imgur.com/vvnJdUi.png)
+
+![Mk3 Spaceplane Parts](https://i.imgur.com/YSO6YPh.png) ![Mk2 Spaceplane Parts](https://i.imgur.com/Kw4YDk4.png)
+
+![Cylindrical Tank Sizes (0.625m – 5.0m)](https://i.imgur.com/S0t1Te8.png)
 
 ### License
-Released under the **MIT License** (included in the repository and download archive).
-
-Feedback, bug reports, and screenshots of your tiled spaceplanes are very welcome!
+MIT License. Feedback, bug reports, and screenshots are very welcome!
 ```
 
 ---
@@ -108,18 +97,27 @@ Feedback, bug reports, and screenshots of your tiled spaceplanes are very welcom
 I made my first KSP mod (with AI): Procedural Tiled Heatshield — wrap spaceplanes in 3D Starship/Shuttle heat tiles that actually glow, weather, and animate with bays & flaps!
 ```
 
-**Recommended Gallery Slide Order (upload directly to Reddit):**
-1. Chosen Title Banner (from `media/banners/`) or `media/ingame_03_reentry_plasma_horizon.jpg`
-2. `media/ingame_04_reentry_glow_closeup.jpg`
-3. `media/ingame_05_shuttle_orbit_3quarter.jpg`
-4. `media/ingame_01_shuttle_belly_orbit.jpg`
-5. `media/ingame_02_mk2_spaceplane_clouds.jpg`
-6. `media/gif_04_procedural_wrap.gif`
-7. `media/gif_05_weathering.gif`
-8. `media/gif_01_bays_opening.gif`
-9. `media/gif_02_flaps_and_winglet.gif`
-10. `media/gif_03_gear_and_docking.gif`
-11. `media/02_tile_variants.png`
+**Recommended Gallery Slide Order (upload directly to Reddit, max. 20):**
+1. `media/banner.jpg`
+2. `media/ingame_09_vab_editor_ui.jpg`
+3. `media/ingame_08_belly_runway.jpg`
+4. `media/ingame_11_shuttle_reentry.jpg`
+5. `media/ingame_12_reentry_glow_top.jpg`
+6. `media/ingame_10_weathered_orbit.jpg`
+7. `media/ingame_13_parachute_weathered.jpg`
+8. `media/ingame_06_tank_sizes_vab.jpg`
+9. `media/ingame_07_delta_wing_belly.jpg`
+10. `media/gif_04_procedural_wrap.gif`
+11. `media/gif_05_weathering.gif`
+12. `media/gif_01_bays_opening.gif`
+13. `media/gif_02_flaps_and_winglet.gif`
+14. `media/gif_03_gear_and_docking.gif`
+15. `media/02_tile_variants.png`
+16. `media/ingame_03_reentry_plasma_horizon.jpg`
+17. `media/ingame_04_reentry_glow_closeup.jpg`
+18. `media/ingame_05_shuttle_orbit_3quarter.jpg`
+19. `media/ingame_01_shuttle_belly_orbit.jpg`
+20. `media/ingame_02_mk2_spaceplane_clouds.jpg`
 
 **First Comment (post right after uploading the gallery):**
 ```markdown
@@ -160,7 +158,7 @@ Procedurally wrap spaceplanes and craft parts in functional 3D Starship/Shuttle 
 
 **Full SpaceDock Description (Markdown):**
 ```markdown
-![Procedural Tiled Heatshield](https://i.imgur.com/4XrVocK.jpeg)
+![Procedural Tiled Heatshield](https://i.imgur.com/pILXv94.jpeg)
 
 **Procedural Tiled Heatshield (v1.0)** adds one surface-attachable part (**Ablative Heat Tiles**) that wraps real 3D Starship/Shuttle heat tiles onto your craft.
 

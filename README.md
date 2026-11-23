@@ -16,8 +16,20 @@ Thermally, the decal works as a real ablative heat shield: it absorbs windward c
 
 ## In-Game Screenshots
 
+<p align="center">
+  <img src="media/ingame_09_vab_editor_ui.jpg" alt="VAB Editor — Tile Window & Part Menu" width="100%" />
+</p>
+
 | | |
 |---|---|
+| ![Every Tank Size](media/ingame_06_tank_sizes_vab.jpg) | ![Delta Wing Belly](media/ingame_07_delta_wing_belly.jpg) |
+| ![Tiled Belly on the Runway](media/ingame_08_belly_runway.jpg) | ![Post-Reentry Weathering in Orbit](media/ingame_10_weathered_orbit.jpg) |
+| ![Shuttle Reentry](media/ingame_11_shuttle_reentry.jpg) | ![Full Reentry Glow](media/ingame_12_reentry_glow_top.jpg) |
+| ![Weathered After Reentry](media/ingame_13_parachute_weathered.jpg) | ![Mk2 Spaceplane Reentry](media/ingame_03_reentry_plasma_horizon.jpg) |
+| ![Reentry Glow Close-Up](media/ingame_04_reentry_glow_closeup.jpg) | ![Mk3 Shuttle in Orbit](media/ingame_05_shuttle_orbit_3quarter.jpg) |
+| ![Mk3 Shuttle Tiled Belly](media/ingame_01_shuttle_belly_orbit.jpg) | ![Mk2 Spaceplane Over Kerbin](media/ingame_02_mk2_spaceplane_clouds.jpg) |
+
+---|---|
 | ![Mk2 Spaceplane Reentry](media/ingame_03_reentry_plasma_horizon.jpg) | ![Reentry Glow Close-Up](media/ingame_04_reentry_glow_closeup.jpg) |
 | ![Mk3 Shuttle in Orbit](media/ingame_05_shuttle_orbit_3quarter.jpg) | ![Mk3 Shuttle Tiled Belly](media/ingame_01_shuttle_belly_orbit.jpg) |
 
