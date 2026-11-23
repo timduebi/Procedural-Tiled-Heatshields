@@ -299,8 +299,8 @@ namespace AblatorDecals
         private Vector3 streakFlow, streakBelly;
         private float streakBellyZ;
         private Texture streakTex;
-        // 1.11.3: large organic repeat scale (4.2 m across x 7.5 m along flow) so wide delta wings & Starships never show repeating stamps
-        private const float StreakLift = 0.0018f, StreakU = 4.2f, StreakV = 7.5f;
+        // 1.11.3/1.11.6: 3.5 mm lift prevents z-fighting at flight camera distances; 4.2 m x 7.5 m scale avoids repeating stamps
+        private const float StreakLift = 0.0035f, StreakU = 4.2f, StreakV = 7.5f;
 
         public void SetStreakAlpha(int bin, float a)
         {
@@ -321,7 +321,8 @@ namespace AblatorDecals
                 streakGo.AddComponent<MeshFilter>().sharedMesh = streakMesh = new Mesh { name = "AblativeDecalStreaks" };
                 streakRenderer = streakGo.AddComponent<MeshRenderer>();
                 streakRenderer.shadowCastingMode = ShadowCastingMode.Off;
-                streakRenderer.receiveShadows = true;
+                // 1.11.6: off to prevent shadow-map acne flickering from the tile mesh sitting 3.5 mm underneath
+                streakRenderer.receiveShadows = false;
                 streakDirty = true;
                 Part holder = Go.GetComponentInParent<Part>();
                 if (holder != null) ResetRendererCaches(holder);
@@ -402,17 +403,23 @@ namespace AblatorDecals
             streakRenderer.sharedMaterials = streakMats;
         }
 
-        // 1.11.3: C-infinity continuous vessel-space UV projection depending ONLY on vertex position p (no 45-deg normal flip!).
-        // Any two adjacent parts share identical UVs along their seam, while side walls wrap smoothly without smearing.
+        // 1.11.6: project flow onto the belly plane first! At 35-45 deg AoA the raw 3D airflow tilts into the belly, so
+        // taking b = perp(flow) tilted z along the nose-to-tail axis and skewed streaks ~30 deg diagonally on wings.
+        // Using flowSurf = tangent(flow, belly) keeps streaks 100 % straight nose-to-tail across wings & fuselage and seamless!
         private void ProjectStreaks(Vector3 flow, Vector3 belly, float bellyZ)
         {
             streakFlow = flow;
             streakBelly = belly;
             streakBellyZ = bellyZ;
-            Vector3 b = belly - flow * Vector3.Dot(belly, flow);
-            if (b.sqrMagnitude < 1e-6f) b = Vector3.Cross(flow, Mathf.Abs(flow.y) < 0.9f ? Vector3.up : Vector3.forward);
-            b.Normalize();
-            Vector3 span = Vector3.Cross(flow, b).normalized;
+            Vector3 b = belly.sqrMagnitude > 1e-6f ? belly.normalized : Vector3.forward;
+            Vector3 flowSurf = flow - b * Vector3.Dot(flow, b);
+            if (flowSurf.sqrMagnitude < 1e-4f)
+            {
+                Vector3 fb = Mathf.Abs(b.y) < 0.9f ? Vector3.down : Vector3.back;
+                flowSurf = fb - b * Vector3.Dot(fb, b);
+            }
+            flowSurf.Normalize();
+            Vector3 span = Vector3.Cross(flowSurf, b).normalized;
             var uv = new Vector2[streakRootPos.Length];
             for (int i = 0; i < uv.Length; i++)
             {
@@ -420,7 +427,7 @@ namespace AblatorDecals
                 float x = Vector3.Dot(p, span);
                 float z = Vector3.Dot(p, b) - bellyZ;
                 float u = x + 0.45f * z * (x / Mathf.Sqrt(x * x + 0.5f));
-                uv[i] = new Vector2(u / StreakU, Vector3.Dot(p, flow) / StreakV);
+                uv[i] = new Vector2(u / StreakU, Vector3.Dot(p, flowSurf) / StreakV);
             }
             streakMesh.uv = uv;
         }

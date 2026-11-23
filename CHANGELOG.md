@@ -2,6 +2,13 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.11.6 (2026-11-23)
+
+- **Fixed Reentry Streak Direction & Earlier Post-Peak Emergence (`TileHost.cs`, `ModuleAblativeDecal.cs`):**
+  - **Straight nose-to-tail streak direction:** Kept `VesselChar.Belly` as the true outward belly normal and projected the 3D reentry airflow tangentially onto the belly plane (`flowSurf`) in `TileHost.ProjectStreaks`. Fixes the ~30° diagonal wing skew caused by orthogonalizing `Belly` against a 40° AoA airflow vector.
+  - **Earlier streak visibility:** Shifted `glowMask` from `0.08..0.45` up to `0.32..0.72` (tucking streaks away only during bright peak plasma flames, so they emerge right away as peak heating eases instead of waiting until all glow is completely gone) and tightened onset to `0.006..0.018`.
+  - **No post-reentry texture flicker:** Increased `StreakLift` (`1.8 mm -> 3.5 mm`) and disabled `receiveShadows` on `AblativeDecalStreaks` to eliminate depth z-fighting and shadow-map acne flickering against the underlying tile mesh.
+
 ## 1.11.5 (2026-11-23)
 
 - **Restored Clear Post-Reentry Weathering Visibility (`ModuleAblativeDecal.cs`, `CharStreaks.cs`):**

@@ -2,6 +2,13 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.11.6 (2026-11-23)
+
+- **Fix: Streifenrichtung exakt in Flugrichtung & früheres Erscheinen (`TileHost.cs`, `ModuleAblativeDecal.cs`):**
+  - **Korrekte Streifenrichtung:** `VesselChar.Belly` bleibt nun die echte Bauch-Normale und der 3D-Luftstrom wird tangential auf die Bauch-Ebene projiziert (`flowSurf`). Behebt die ~30°-Schräglage der Streifen auf Flügeln bei 40° Anstellwinkel — Streifen laufen wieder exakt gerade von Nase zu Heck und nahtlos über alle Flügel-/Rumpfnähte.
+  - **Früheres Erscheinen:** `glowMask` von `0,08..0,45` auf `0,32..0,72` angehoben (blendet Streifen nur noch während des hellen Glüh-Maximums aus, sodass sie sofort beim Nachlassen der Spitzenhitze sichtbar werden statt erst nach vollständigem Abkühlen) und Einsetz-Rampe auf `0,006..0,018` gestrafft.
+  - **Kein Flackern mehr nach dem Reentry:** `StreakLift` auf `3,5 mm` erhöht und `receiveShadows` am Streifen-Overlay deaktiviert, um Z-Fighting und Shadow-Acne-Flackern gegen die direkt darunter liegenden Kacheln zu verhindern.
+
 ## 1.11.5 (2026-11-23)
 
 - **Sichtbarkeit der Reentry-Verwitterung wieder kräftig und ausgewogen (`ModuleAblativeDecal.cs`, `CharStreaks.cs`):**

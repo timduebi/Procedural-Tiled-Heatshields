@@ -670,7 +670,7 @@ namespace AblatorDecals
                 // flow turns (streaks re-projected by TileHost past 10 deg)
                 VesselChar vc = CharField();
                 float uni = vc != null ? 0.95f * vc.Used + 0.05f * used : used;
-                float gMask = 1f - SmoothStep01(0.08f, 0.45f, (float)glowShownMax);
+                float gMask = 1f - 0.85f * SmoothStep01(0.32f, 0.72f, (float)glowShownMax);
                 if (Mathf.Abs(used - appliedChar) >= 0.003f || Mathf.Abs(uni - appliedUnified) >= 0.003f ||
                     Mathf.Abs(gMask - appliedGlowMask) >= 0.02f ||
                     (vc != null && Vector3.Angle(vc.Flow, appliedFlow) > 10f)) ApplyChar(used);
@@ -801,9 +801,9 @@ namespace AblatorDecals
             Transform root = RootTransform();
             Vector3 flow = vc != null ? vc.Flow : DefaultFlow;
             appliedFlow = flow;
-            // 1.11.3: hide the un-emissive streak overlay while tiles glow hot so dark lines never sit over reentry flames;
-            // streaks emerge smoothly as the tiles cool down after peak heating
-            float glowMask = HighLogic.LoadedSceneIsFlight ? (1f - SmoothStep01(0.08f, 0.45f, (float)glowShownMax)) : 1f;
+            // 1.11.6: only tuck streaks away during bright peak plasma glow (0.32..0.72) so they never paint dark lines over
+            // blazing orange flames, yet emerge right away as peak heating eases instead of waiting until all glow is gone
+            float glowMask = HighLogic.LoadedSceneIsFlight ? (1f - 0.85f * SmoothStep01(0.32f, 0.72f, (float)glowShownMax)) : 1f;
             appliedGlowMask = glowMask;
             Vector3 belly = vc != null ? vc.Belly : (root != null ? root.InverseTransformDirection(part.partTransform.TransformDirection(shieldNormal)) : Vector3.forward);
             float bellyZ = vc != null ? vc.BellyZ : 0f;
@@ -863,7 +863,7 @@ namespace AblatorDecals
                     // 1.11.5: smooth delayed onset — clean during first seconds of reentry (u < 0.005), ~0.60 after one Kerbin
                     // reentry (~40 % peak streak opacity, clearly visible even in shadow) and 1.0 across 2-3+ reentries
                     float u = uni * dirFactor;
-                    float onset = SmoothStep01(0.005f, 0.020f, u);
+                    float onset = SmoothStep01(0.006f, 0.018f, u);
                     float reentryAmt = onset * Mathf.Pow(Mathf.Clamp01(u * 5.2f), 0.50f);
                     float amt = Mathf.Clamp01(baseWeath + reentryAmt);
                     h.SetBinChar(b, Color.Lerp(baseCol, charCol, amt * colScale), amt);
@@ -915,9 +915,10 @@ namespace AblatorDecals
             }
             f.Used = area > 0 ? (float)(sum / area) : 0f;
             f.Flow = flow.sqrMagnitude > 1e-12f ? flow.normalized : DefaultFlow;
-            Vector3 b = bellySum - f.Flow * Vector3.Dot(bellySum, f.Flow);
-            if (b.sqrMagnitude < 1e-6f) b = Vector3.Cross(f.Flow, Mathf.Abs(f.Flow.y) < 0.9f ? Vector3.up : Vector3.forward);
-            f.Belly = b.normalized;
+            // 1.11.6: keep Belly as the true outward belly normal (do NOT orthogonalize against 40-deg AoA Flow!)
+            // so TileHost.ProjectStreaks can project Flow tangentially onto the belly plane with zero diagonal wing skew
+            f.Belly = bellySum.sqrMagnitude > 1e-6f ? bellySum.normalized
+                : (Mathf.Abs(f.Flow.z) < 0.9f ? Vector3.forward : Vector3.up);
             double zSum = 0, zArea = 0;
             if (root != null)
                 foreach (ModuleAblativeDecal d in VesselDecals())
