@@ -2,6 +2,12 @@ Sprache: [English](CHANGELOG.md) | **Deutsch**
 
 # Changelog
 
+## 1.12.0 (2026-11-23)
+
+- **Starship-Querströmungs-Streifen rund um Tank- & Rumpfkrümmungen (`TileHost.cs`, `ModuleAblativeDecal.cs`):**
+  - Zweite schiffsweite Streifen-Ebene (`AblativeDecalCrossStreaks`, `renderQueue = 3002`, ohne zusätzliche Texturen) speziell für gekrümmte Tank- und Rumpfflanken (`|n · span| > 0,12`): helle Asche-/Plasma-Streifen ziehen nun wie beim echten Starship von der Bauchmitte **nach außen und leicht nach hinten um die Tankrundung herum**, komplett nahtlos über gestapelte Tanks hinweg, während flache Deltaflügel sauber gerade von Nase zu Heck gestreift bleiben.
+  - Auch direkt im VAB über den **Verwitterung**-Regler auf runden Tanks und Rümpfen sichtbar.
+
 ## 1.11.6 (2026-11-23)
 
 - **Fix: Streifenrichtung exakt in Flugrichtung & früheres Erscheinen (`TileHost.cs`, `ModuleAblativeDecal.cs`):**

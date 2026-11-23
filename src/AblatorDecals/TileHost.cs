@@ -143,6 +143,7 @@ namespace AblatorDecals
             JointSet = Color.black;
             streakDirty = true; // 1.10: the streak overlay follows the new tiles on its next EnsureStreaks
             streakAlpha = new float[bins];
+            crossAlpha = new float[bins];
         }
 
         // editor: exact (non-convex) collider on the tile mesh for clicks and surface attach; off (removed) on gear hosts
@@ -289,30 +290,40 @@ namespace AblatorDecals
         // A child object with the tile tops (lifted 1.2 mm along the normals) and the streak texture, UVs projected in vessel
         // root space along the reentry flow, so streaks run unbroken across module seams. One material per glow bin (alpha =
         // that bin's char). Made on the first non-zero char, kept (only refilled) on rebuilds so no part caches a dead renderer.
-        private GameObject streakGo;
-        private MeshRenderer streakRenderer;
-        private Mesh streakMesh;
-        private Material[] streakMats = new Material[0];
-        private float[] streakAlpha = new float[0];
+        private GameObject streakGo, crossGo;
+        private MeshRenderer streakRenderer, crossRenderer;
+        private Mesh streakMesh, crossMesh;
+        private Material[] streakMats = new Material[0], crossMats = new Material[0];
+        private float[] streakAlpha = new float[0], crossAlpha = new float[0];
         private bool streakDirty = true;
         private Vector3[] streakRootPos = new Vector3[0]; // per streak vertex, vessel root space
+        private Vector3[] crossRootPos = new Vector3[0];  // 1.12: per cross-streak vertex, vessel root space
+        private Vector3[] crossTriCenter = new Vector3[0]; // per vertex: its triangle center in root space (for left/right shift)
         private Vector3 streakFlow, streakBelly;
         private float streakBellyZ;
         private Texture streakTex;
         // 1.11.3/1.11.6: 3.5 mm lift prevents z-fighting at flight camera distances; 4.2 m x 7.5 m scale avoids repeating stamps
-        private const float StreakLift = 0.0035f, StreakU = 4.2f, StreakV = 7.5f;
+        // 1.12: second translucent layer (+0.6 mm, renderQueue 3002) for Starship-style streaks wrapping outward down tank curves
+        private const float StreakLift = 0.0035f, CrossLift = 0.0041f, StreakU = 4.2f, StreakV = 7.5f, CrossU = 3.6f, CrossV = 4.8f;
 
         public void SetStreakAlpha(int bin, float a)
         {
             if (bin >= 0 && bin < streakAlpha.Length) streakAlpha[bin] = a;
         }
 
-        // root: vessel root transform; flow: reentry airflow in root space (unit); belly/bellyZ: vessel belly normal & offset in root space.
-        public void EnsureStreaks(Texture tex, Shader shader, Transform root, Vector3 flow, Vector3 belly, float bellyZ)
+        public void SetCrossStreakAlpha(int bin, float a)
+        {
+            if (bin >= 0 && bin < crossAlpha.Length) crossAlpha[bin] = a;
+        }
+
+        // root: vessel root transform; flow: reentry airflow in root space (unit); belly/bellyPeak: vessel belly normal & outer offset.
+        public void EnsureStreaks(Texture tex, Shader shader, Transform root, Vector3 flow, Vector3 belly, float bellyPeak)
         {
             if (Go == null || Mesh == null || root == null || tex == null || shader == null || BinCount == 0) return;
-            bool any = false;
-            foreach (float a in streakAlpha) if (a > 0.001f) { any = true; break; }
+            bool anyAxial = false, anyCross = false;
+            foreach (float a in streakAlpha) if (a > 0.001f) { anyAxial = true; break; }
+            foreach (float a in crossAlpha) if (a > 0.001f) { anyCross = true; break; }
+            bool any = anyAxial || anyCross;
             if (streakGo == null)
             {
                 if (!any) return;
@@ -327,11 +338,27 @@ namespace AblatorDecals
                 Part holder = Go.GetComponentInParent<Part>();
                 if (holder != null) ResetRendererCaches(holder);
             }
+            if (crossGo == null && anyCross)
+            {
+                crossGo = new GameObject("AblativeDecalCrossStreaks") { layer = Go.layer };
+                crossGo.transform.SetParent(Go.transform, false);
+                crossGo.AddComponent<MeshFilter>().sharedMesh = crossMesh = new Mesh { name = "AblativeDecalCrossStreaks" };
+                crossRenderer = crossGo.AddComponent<MeshRenderer>();
+                crossRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                crossRenderer.receiveShadows = false;
+                streakDirty = true;
+                Part holder = Go.GetComponentInParent<Part>();
+                if (holder != null) ResetRendererCaches(holder);
+            }
             streakGo.layer = Go.layer;
-            if (streakDirty || streakMats.Length != BinCount || streakTex != tex || (streakMats.Length > 0 && streakMats[0].shader != shader))
-                BuildStreaks(tex, shader, root, flow, belly, bellyZ);
-            else if (Vector3.Angle(streakFlow, flow) > 10f || Vector3.Angle(streakBelly, belly) > 10f || Mathf.Abs(streakBellyZ - bellyZ) > 0.25f)
-                ProjectStreaks(flow, belly, bellyZ);
+            if (crossGo != null) crossGo.layer = Go.layer;
+            bool needBuild = streakDirty || streakMats.Length != BinCount || streakTex != tex ||
+                (streakMats.Length > 0 && streakMats[0].shader != shader) ||
+                (crossGo != null && (crossMats.Length != BinCount || (crossMats.Length > 0 && crossMats[0].shader != shader)));
+            if (needBuild)
+                BuildStreaks(tex, shader, root, flow, belly, bellyPeak);
+            else if (Vector3.Angle(streakFlow, flow) > 10f || Vector3.Angle(streakBelly, belly) > 10f || Mathf.Abs(streakBellyZ - bellyPeak) > 0.25f)
+                ProjectStreaks(flow, belly, bellyPeak);
             for (int b = 0; b < streakMats.Length; b++)
             {
                 float a = b < streakAlpha.Length ? streakAlpha[b] : 0;
@@ -341,10 +368,24 @@ namespace AblatorDecals
             bool ours = now.Length == streakMats.Length;
             for (int i = 0; ours && i < now.Length; i++) ours = now[i] == streakMats[i];
             if (!ours) streakRenderer.sharedMaterials = streakMats; // KSP's highlighter may have instanced them
-            streakRenderer.enabled = any;
+            streakRenderer.enabled = anyAxial;
+
+            if (crossGo != null && crossRenderer != null)
+            {
+                for (int b = 0; b < crossMats.Length; b++)
+                {
+                    float a = b < crossAlpha.Length ? crossAlpha[b] : 0;
+                    if (Mathf.Abs(crossMats[b].color.a - a) > 0.002f) crossMats[b].color = new Color(1, 1, 1, a);
+                }
+                Material[] cNow = crossRenderer.sharedMaterials;
+                bool cOurs = cNow.Length == crossMats.Length;
+                for (int i = 0; cOurs && i < cNow.Length; i++) cOurs = cNow[i] == crossMats[i];
+                if (!cOurs) crossRenderer.sharedMaterials = crossMats;
+                crossRenderer.enabled = anyCross;
+            }
         }
 
-        private void BuildStreaks(Texture tex, Shader shader, Transform root, Vector3 flow, Vector3 belly, float bellyZ)
+        private void BuildStreaks(Texture tex, Shader shader, Transform root, Vector3 flow, Vector3 belly, float bellyPeak)
         {
             streakDirty = false;
             streakTex = tex;
@@ -353,6 +394,8 @@ namespace AblatorDecals
             var pos = new List<Vector3>();
             var nrm = new List<Vector3>();
             var rootPos = new List<Vector3>();
+            var cPos = crossGo != null ? new List<Vector3>() : null;
+            var cTriC = crossGo != null ? new List<Vector3>() : null;
             var subs = new int[BinCount][];
             for (int b = 0; b < BinCount; b++)
             {
@@ -366,6 +409,7 @@ namespace AblatorDecals
                     if (fn.sqrMagnitude < 1e-14f) continue;
                     // tile tops only: walls and bevels turn away from the bin's direction (decal space)
                     if (binN != Vector3.zero && Vector3.Dot(hostToDecal.MultiplyVector(fn).normalized, binN) < 0.6f) continue;
+                    Vector3 tcRoot = cTriC != null ? toRoot.MultiplyPoint3x4((a + c1 + c2) * (1f / 3f)) : Vector3.zero;
                     for (int k = 0; k < 3; k++)
                     {
                         int vi = tris[t + k];
@@ -374,6 +418,11 @@ namespace AblatorDecals
                         pos.Add(p);
                         nrm.Add(hn[vi]);
                         rootPos.Add(toRoot.MultiplyPoint3x4(p));
+                        if (cPos != null)
+                        {
+                            cPos.Add(hv[vi] + hn[vi] * CrossLift);
+                            cTriC.Add(tcRoot);
+                        }
                     }
                 }
                 subs[b] = outTris.ToArray();
@@ -385,8 +434,22 @@ namespace AblatorDecals
             streakMesh.SetNormals(nrm);
             streakMesh.subMeshCount = BinCount;
             for (int b = 0; b < BinCount; b++) streakMesh.SetTriangles(subs[b], b);
-            ProjectStreaks(flow, belly, bellyZ);
+
+            if (crossGo != null && crossMesh != null && cPos != null)
+            {
+                crossRootPos = streakRootPos;
+                crossTriCenter = cTriC.ToArray();
+                crossMesh.Clear();
+                crossMesh.indexFormat = cPos.Count > 65000 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+                crossMesh.SetVertices(cPos);
+                crossMesh.SetNormals(nrm);
+                crossMesh.subMeshCount = BinCount;
+                for (int b = 0; b < BinCount; b++) crossMesh.SetTriangles(subs[b], b);
+            }
+
+            ProjectStreaks(flow, belly, bellyPeak);
             streakMesh.RecalculateBounds();
+            if (crossMesh != null) crossMesh.RecalculateBounds();
 
             if (streakMats.Length != BinCount || (streakMats.Length > 0 && streakMats[0].shader != shader))
             {
@@ -401,16 +464,32 @@ namespace AblatorDecals
             }
             foreach (Material m in streakMats) m.mainTexture = tex;
             streakRenderer.sharedMaterials = streakMats;
+
+            if (crossGo != null && crossRenderer != null)
+            {
+                if (crossMats.Length != BinCount || (crossMats.Length > 0 && crossMats[0].shader != shader))
+                {
+                    foreach (Material m in crossMats) if (m != null) Object.Destroy(m);
+                    crossMats = new Material[BinCount];
+                    for (int b = 0; b < BinCount; b++)
+                    {
+                        var m = new Material(shader) { name = "AblativeDecalCrossStreaks" + b, renderQueue = 3002, color = new Color(1, 1, 1, 0) };
+                        if (m.HasProperty("_Opacity")) m.SetFloat("_Opacity", 1f);
+                        crossMats[b] = m;
+                    }
+                }
+                foreach (Material m in crossMats) m.mainTexture = tex;
+                crossRenderer.sharedMaterials = crossMats;
+            }
         }
 
-        // 1.11.6: project flow onto the belly plane first! At 35-45 deg AoA the raw 3D airflow tilts into the belly, so
-        // taking b = perp(flow) tilted z along the nose-to-tail axis and skewed streaks ~30 deg diagonally on wings.
-        // Using flowSurf = tangent(flow, belly) keeps streaks 100 % straight nose-to-tail across wings & fuselage and seamless!
-        private void ProjectStreaks(Vector3 flow, Vector3 belly, float bellyZ)
+        // 1.11.6: project flow onto the belly plane (flowSurf) so axial streaks run straight nose-to-tail on wings & bellies.
+        // 1.12: also project cross-flow UVs on curved flanks sweeping outward from the tank belly centerline down the curvature!
+        private void ProjectStreaks(Vector3 flow, Vector3 belly, float bellyPeak)
         {
             streakFlow = flow;
             streakBelly = belly;
-            streakBellyZ = bellyZ;
+            streakBellyZ = bellyPeak;
             Vector3 b = belly.sqrMagnitude > 1e-6f ? belly.normalized : Vector3.forward;
             Vector3 flowSurf = flow - b * Vector3.Dot(flow, b);
             if (flowSurf.sqrMagnitude < 1e-4f)
@@ -425,11 +504,30 @@ namespace AblatorDecals
             {
                 Vector3 p = streakRootPos[i];
                 float x = Vector3.Dot(p, span);
-                float z = Vector3.Dot(p, b) - bellyZ;
-                float u = x + 0.45f * z * (x / Mathf.Sqrt(x * x + 0.5f));
+                float recede = Mathf.Max(0f, bellyPeak - Vector3.Dot(p, b));
+                float s = x / Mathf.Sqrt(x * x + 0.25f);
+                float u = x + 0.65f * recede * s;
                 uv[i] = new Vector2(u / StreakU, Vector3.Dot(p, flowSurf) / StreakV);
             }
             streakMesh.uv = uv;
+
+            if (crossMesh != null && crossRootPos.Length == streakRootPos.Length && crossTriCenter.Length == streakRootPos.Length)
+            {
+                // Streamlines y - 0.65 * absArc = const sweep outward down the tank curvature AND backward toward the tail,
+                // with v increasing outward so the feathery tails trail down the flanks like Starship reentry plasma streaks.
+                var cuv = new Vector2[crossRootPos.Length];
+                for (int i = 0; i < cuv.Length; i++)
+                {
+                    Vector3 p = crossRootPos[i];
+                    float x = Vector3.Dot(p, span);
+                    float y = Vector3.Dot(p, flowSurf);
+                    float recede = Mathf.Max(0f, bellyPeak - Vector3.Dot(p, b));
+                    float absArc = Mathf.Abs(x) + 0.85f * recede;
+                    float sideShift = Vector3.Dot(crossTriCenter[i], span) >= 0f ? 0f : 0.37f;
+                    cuv[i] = new Vector2((y - 0.65f * absArc) / CrossU + sideShift, (absArc + 0.35f * y) / CrossV);
+                }
+                crossMesh.uv = cuv;
+            }
         }
 
         // KSP caches a part's renderers: the model caches, Part.HighlightRenderer (Part.SetOpacity calls SetPropertyBlock on
@@ -454,6 +552,11 @@ namespace AblatorDecals
             if (streakMesh != null) Object.Destroy(streakMesh);
             streakMesh = null;
             streakRenderer = null; // its GameObject is a child of Go and goes with it
+            foreach (Material m in crossMats) if (m != null) Object.Destroy(m);
+            crossMats = new Material[0];
+            if (crossMesh != null) Object.Destroy(crossMesh);
+            crossMesh = null;
+            crossRenderer = null; // its GameObject is a child of Go and goes with it
             if (Mesh != null) Object.Destroy(Mesh);
             if (Go != null)
             {

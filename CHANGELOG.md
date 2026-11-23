@@ -2,6 +2,12 @@ Language: **English** | [Deutsch](CHANGELOG.de.md)
 
 # Changelog
 
+## 1.12.0 (2026-11-23)
+
+- **Starship-Style Curved-Hull Cross-Flow Streaks (`TileHost.cs`, `ModuleAblativeDecal.cs`):**
+  - Added a second vessel-space streak layer (`AblativeDecalCrossStreaks`, `renderQueue = 3002`, zero extra textures) active strictly on curved tank/fuselage flanks (`|n · span| > 0.12`): feathery reentry plasma streaks now fan outward and backward from the belly centerline **down around the cylinder curvature** (just like real Starship reentry flow) while remaining 100 % seamless across stacked tanks and keeping flat delta wings purely nose-to-tail.
+  - Also previews live on curved tanks and fuselages when dragging the **Weathering** slider in the VAB.
+
 ## 1.11.6 (2026-11-23)
 
 - **Fixed Reentry Streak Direction & Earlier Post-Peak Emergence (`TileHost.cs`, `ModuleAblativeDecal.cs`):**

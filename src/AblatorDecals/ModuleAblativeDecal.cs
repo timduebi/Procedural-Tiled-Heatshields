@@ -7,7 +7,7 @@ using KSP.Localization;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
-[assembly: KSPAssembly("AblatorDecals", 1, 11)]
+[assembly: KSPAssembly("AblatorDecals", 1, 12)]
 
 namespace AblatorDecals
 {
@@ -805,8 +805,24 @@ namespace AblatorDecals
             // blazing orange flames, yet emerge right away as peak heating eases instead of waiting until all glow is gone
             float glowMask = HighLogic.LoadedSceneIsFlight ? (1f - 0.85f * SmoothStep01(0.32f, 0.72f, (float)glowShownMax)) : 1f;
             appliedGlowMask = glowMask;
-            Vector3 belly = vc != null ? vc.Belly : (root != null ? root.InverseTransformDirection(part.partTransform.TransformDirection(shieldNormal)) : Vector3.forward);
-            float bellyZ = vc != null ? vc.BellyZ : 0f;
+            Vector3 belly = vc != null ? vc.Belly : (root != null ? root.InverseTransformDirection(part.partTransform.TransformDirection(shieldNormal)).normalized : Vector3.forward);
+            float bellyPeak = vc != null ? vc.BellyPeak : 0f;
+            if (vc == null && root != null)
+            {
+                float pk = float.MinValue;
+                foreach (TileHost h in hosts)
+                    if (h.Alive) pk = Mathf.Max(pk, Vector3.Dot(root.InverseTransformPoint(h.Renderer.bounds.center), belly) + h.Renderer.bounds.extents.magnitude * 0.5f);
+                if (pk > float.MinValue * 0.5f) bellyPeak = pk;
+            }
+            // Span axis in root space (left-to-right across wings/tank flanks) for curved-hull cross-flow streaks
+            Vector3 flowSurf = flow - belly * Vector3.Dot(flow, belly);
+            if (flowSurf.sqrMagnitude < 1e-4f)
+            {
+                Vector3 fb = Mathf.Abs(belly.y) < 0.9f ? Vector3.down : Vector3.back;
+                flowSurf = fb - belly * Vector3.Dot(fb, belly);
+            }
+            Vector3 span = Vector3.Cross(flowSurf.normalized, belly).normalized;
+            float crossStrength = HighLogic.LoadedSceneIsFlight ? (0.45f + 0.55f * Mathf.Clamp01(Vector3.Dot(-flow, belly))) : 0.80f;
             bool black = string.Equals(Finish, "Black", StringComparison.OrdinalIgnoreCase);
             bool ceramic = string.Equals(Finish, "Ceramic", StringComparison.OrdinalIgnoreCase);
             bool steel = string.Equals(Finish, "Steel", StringComparison.OrdinalIgnoreCase);
@@ -849,27 +865,38 @@ namespace AblatorDecals
                     // 1.11.3: continuous vessel-space windward facing (identical on both sides of any wing/fuselage seam;
                     // replaces per-decal maxExposure normalization which caused abrupt opacity steps between adjacent parts)
                     float dirFactor = 1f;
-                    if (HighLogic.LoadedSceneIsFlight && root != null)
+                    float sideAmt = 0f;
+                    if (root != null)
                     {
                         Vector3 wn = h.WorldBinNormal(b);
                         if (wn != Vector3.zero)
                         {
-                            float windward = Mathf.Clamp01(Vector3.Dot(root.InverseTransformDirection(wn).normalized, -flow));
-                            // 1.11.5: belly flying at 30-40 deg AoA has windward ~0.55-0.65; Sqrt curve gives full ~1.14 exposure
-                            // without cutting spaceplane bellies in half while remaining 100 % continuous across part seams
-                            dirFactor = 0.65f + 0.65f * Mathf.Sqrt(windward);
+                            Vector3 rn = root.InverseTransformDirection(wn).normalized;
+                            sideAmt = Mathf.Abs(Vector3.Dot(rn, span));
+                            if (HighLogic.LoadedSceneIsFlight)
+                            {
+                                float windward = Mathf.Clamp01(Vector3.Dot(rn, -flow));
+                                // 1.11.5: belly flying at 30-40 deg AoA has windward ~0.55-0.65; Sqrt curve gives full ~1.14 exposure
+                                // without cutting spaceplane bellies in half while remaining 100 % continuous across part seams
+                                dirFactor = 0.65f + 0.65f * Mathf.Sqrt(windward);
+                            }
                         }
                     }
-                    // 1.11.5: smooth delayed onset — clean during first seconds of reentry (u < 0.005), ~0.60 after one Kerbin
+                    // 1.11.5: smooth delayed onset — clean during first seconds of reentry (u < 0.006), ~0.60 after one Kerbin
                     // reentry (~40 % peak streak opacity, clearly visible even in shadow) and 1.0 across 2-3+ reentries
                     float u = uni * dirFactor;
                     float onset = SmoothStep01(0.006f, 0.018f, u);
                     float reentryAmt = onset * Mathf.Pow(Mathf.Clamp01(u * 5.2f), 0.50f);
                     float amt = Mathf.Clamp01(baseWeath + reentryAmt);
                     h.SetBinChar(b, Color.Lerp(baseCol, charCol, amt * colScale), amt);
-                    h.SetStreakAlpha(b, Mathf.Clamp01(amt * strength * glowMask));
+                    // 1.12: curved tank flanks get Starship-style streaks sweeping outward & backward down the curvature;
+                    // flat wings (sideAmt < 0.12) keep pure axial nose-to-tail streaks with zero extra overlay
+                    float flankFade = SmoothStep01(0.12f, 0.55f, sideAmt);
+                    float baseAlpha = Mathf.Clamp01(amt * strength * glowMask);
+                    h.SetStreakAlpha(b, baseAlpha * (1f - 0.35f * flankFade));
+                    h.SetCrossStreakAlpha(b, Mathf.Clamp01(baseAlpha * flankFade * crossStrength * 0.90f));
                 }
-                if (streakTex != null && streakSh != null) h.EnsureStreaks(streakTex, streakSh, root, flow, belly, bellyZ);
+                if (streakTex != null && streakSh != null) h.EnsureStreaks(streakTex, streakSh, root, flow, belly, bellyPeak);
             }
         }
 
@@ -885,8 +912,8 @@ namespace AblatorDecals
             public int Frame = -1;
             public float Used;                        // area-weighted ablator use of all decals on the vessel
             public Vector3 Flow = DefaultFlow;        // root space, unit
-            public Vector3 Belly = Vector3.forward;   // 1.11.3: area-weighted outward belly normal in root space (perp to Flow)
-            public float BellyZ;                      // 1.11.3: mean coordinate of shields along Belly (root space)
+            public Vector3 Belly = Vector3.forward;   // 1.11.6: area-weighted outward belly normal in root space
+            public float BellyPeak;                   // 1.12: outermost belly coordinate along Belly (root space, for tank wrap)
         }
 
         // ponytail: weak table keyed by the Vessel (gone with it, nothing to clear on unload), as GlowFields
@@ -919,7 +946,7 @@ namespace AblatorDecals
             // so TileHost.ProjectStreaks can project Flow tangentially onto the belly plane with zero diagonal wing skew
             f.Belly = bellySum.sqrMagnitude > 1e-6f ? bellySum.normalized
                 : (Mathf.Abs(f.Flow.z) < 0.9f ? Vector3.forward : Vector3.up);
-            double zSum = 0, zArea = 0;
+            float peak = float.MinValue;
             if (root != null)
                 foreach (ModuleAblativeDecal d in VesselDecals())
                 {
@@ -927,11 +954,11 @@ namespace AblatorDecals
                     foreach (TileHost h in d.hosts)
                     {
                         if (!h.Alive) continue;
-                        zSum += Vector3.Dot(root.InverseTransformPoint(h.Renderer.bounds.center), f.Belly) * d.coveredArea;
-                        zArea += d.coveredArea;
+                        float zc = Vector3.Dot(root.InverseTransformPoint(h.Renderer.bounds.center), f.Belly) + h.Renderer.bounds.extents.magnitude * 0.5f;
+                        if (zc > peak) peak = zc;
                     }
                 }
-            f.BellyZ = zArea > 0 ? (float)(zSum / zArea) : 0f;
+            f.BellyPeak = peak > float.MinValue * 0.5f ? peak : 0f;
             return f;
         }
 
