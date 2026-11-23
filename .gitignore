@@ -11,5 +11,9 @@
 /.claude/
 /preview/
 /input/
+/renders/
+/tools/RenderShowcase/
 /SurfaceIndex.cs
+/scheduled_tasks.lock
 /dist/
+/media/banners/
