@@ -74,7 +74,7 @@ Vorgefertigte Cockpitformen halten Fenster (und Mk2-RCS-Düsen) an Mk1-, Mk2- un
 
 ## Installation
 
-1. Aktuelles Release-ZIP unter [Releases](https://github.com/timduebi/Procedural-Tiled-Heatshields/releases) herunterladen.
+1. Aktuelles Release-ZIP über [SpaceDock](https://spacedock.info/mod/4884/Procedural%20Tiled%20Heatshield) oder [GitHub Releases](https://github.com/timduebi/Procedural-Tiled-Heatshields/releases) herunterladen.
 2. Den Ordner `GameData/AblatorDecals` in dein KSP-`GameData`-Verzeichnis kopieren.
 3. **Keine Pflicht-Abhängigkeiten** (läuft direkt auf KSP 1.12.x).
 
@@ -94,6 +94,8 @@ Vorgefertigte Cockpitformen halten Fenster (und Mk2-RCS-Düsen) an Mk1-, Mk2- un
 
 ## Dokumentation, Quelltext & Lizenz
 
+- **[SpaceDock-Seite](https://spacedock.info/mod/4884/Procedural%20Tiled%20Heatshield)** — Downloads & CKAN.
+- **[KSP-Forum-Thread](https://forum.kerbalspaceprogram.com/topic/232194-112x-procedural-tiled-heatshield-v10-procedural-3d-thermal-protection-tiles-for-spaceplanes-more/)** — Diskussion, Feedback & Screenshots.
 - **[Technische Referenz & Config-Übersicht (EN)](docs/REFERENCE.md)** — eigene Texturen, Config-Felder, Thermikmodell und Build-Anleitung.
 - **[Changelog](CHANGELOG.de.md)** ([English](CHANGELOG.md)) — vollständige Versionshistorie.
 - **[Architektur & Design](docs/ARCHITECTURE.md)** — technische Entwickler-Doku.

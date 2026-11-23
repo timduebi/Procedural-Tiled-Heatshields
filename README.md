@@ -74,7 +74,7 @@ Pre-baked precision covers keep windows (and Mk2 RCS nozzles) clear on Mk1, Mk2,
 
 ## Installation
 
-1. Download the latest release ZIP from [Releases](https://github.com/timduebi/Procedural-Tiled-Heatshields/releases).
+1. Download the latest release ZIP from [SpaceDock](https://spacedock.info/mod/4884/Procedural%20Tiled%20Heatshield) or [GitHub Releases](https://github.com/timduebi/Procedural-Tiled-Heatshields/releases).
 2. Copy the `GameData/AblatorDecals` folder into your KSP `GameData` directory.
 3. **No dependencies required** (KSP 1.12.x standalone).
 
@@ -94,6 +94,8 @@ Pre-baked precision covers keep windows (and Mk2 RCS nozzles) clear on Mk1, Mk2,
 
 ## Documentation, Source & License
 
+- **[SpaceDock Page](https://spacedock.info/mod/4884/Procedural%20Tiled%20Heatshield)** — downloads & CKAN metadata.
+- **[KSP Forum Thread](https://forum.kerbalspaceprogram.com/topic/232194-112x-procedural-tiled-heatshield-v10-procedural-3d-thermal-protection-tiles-for-spaceplanes-more/)** — discussion, feedback & screenshots.
 - **[Technical & Config Reference](docs/REFERENCE.md)** — custom textures, `ModuleAblativeDecal` config fields, thermal model, and build instructions.
 - **[Changelog](CHANGELOG.md)** ([Deutsch](CHANGELOG.de.md)) — full version history.
 - **[Architecture & Design Notes](docs/ARCHITECTURE.md)** — internal design documentation.
